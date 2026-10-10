@@ -464,11 +464,13 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     final route = _partial(widget.route, _routeAnim.value).map((p) => ll.LatLng(p.lat, p.lng)).toList();
     final carAt = _carShown;
     final pickup = widget.pins.where((p) => p.kind == 'pickup').firstOrNull;
-    // MapTiler when the server has a key; free CARTO/OpenStreetMap otherwise.
-    final cfg = context.select<Session, (String?, String?)>((s) => (s.config?.tileUrl, s.config?.tileAttribution));
+    // Street map from the RideSync server (TomTom → MapTiler → OpenStreetMap, fetched with the
+    // server's keys): map services refuse keyless requests from apps ("API key required").
+    final cfg = context.select<Session, (String, String?)>((s) => (s.api.mapTileUrl, s.config?.tileAttribution));
     final traffic = context.select<Session, String?>((s) => s.config?.traffic == true ? s.api.trafficTileUrl : null);
+    // Only for an older RideSync server without /api/tiles.
     const carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png';
-    final tileUrl = _tilesFailed ? carto : (cfg.$1 ?? carto);
+    final tileUrl = _tilesFailed ? carto : cfg.$1;
     final credit = (cfg.$2 ?? '© OpenStreetMap · CARTO').replaceAll(RegExp(r'<[^>]+>'), '');
     return fm.FlutterMap(
       mapController: _osm,
@@ -484,7 +486,7 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       children: [
         fm.TileLayer(
           urlTemplate: tileUrl,
-          // A rejected key or quota → switch to the free CARTO map instead of error tiles.
+          // The server has no map tiles (older version) → CARTO instead of empty tiles.
           errorTileCallback: (_, _, _) {
             if (tileUrl != carto && ++_tileErrors == 4 && mounted) setState(() => _tilesFailed = true);
           },

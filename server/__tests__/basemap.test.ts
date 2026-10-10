@@ -50,5 +50,10 @@ describe('street map for the phone app', () => {
     expect(blank.headers['cache-control']).toBe('no-store')
     const cfg = (await request(app).get('/api/config').set('x-ridesync-app', '1').set('Host', 'abc.trycloudflare.com').set('X-Forwarded-Proto', 'https')).body
     expect(cfg.maps.tiles.url).toBe('https://abc.trycloudflare.com/api/tiles/{z}/{x}/{y}.png')
+    // Tunnel link without the https hint still gets https (phones block http); Wi-Fi addresses keep http.
+    const tunnel = (await request(app).get('/api/config').set('x-ridesync-app', '1').set('Host', 'xyz.trycloudflare.com')).body
+    expect(tunnel.maps.tiles.url).toBe('https://xyz.trycloudflare.com/api/tiles/{z}/{x}/{y}.png')
+    const wifi = (await request(app).get('/api/config').set('x-ridesync-app', '1').set('Host', '192.168.1.5:5173')).body
+    expect(wifi.maps.tiles.url).toBe('http://192.168.1.5:5173/api/tiles/{z}/{x}/{y}.png')
   })
 })

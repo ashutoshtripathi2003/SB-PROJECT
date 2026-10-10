@@ -100,8 +100,15 @@ const QueryZ = z.object({
 
 /* ---- Config & auth -------------------------------------------------------- */
 
+/** This server's address as the caller reached it. Tunnel and hosted links are always https (phones block http). */
+function appBase(req: Request) {
+  const host = req.get('x-forwarded-host')?.split(',')[0].trim() || req.get('host') || 'localhost'
+  const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[)/.test(host)
+  return `${local ? req.protocol : 'https'}://${host}`
+}
+
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: `${req.protocol}://${req.get('host')}` }) })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }) })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -424,7 +431,7 @@ const BLANK_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA
 // Street map for the phone app (see basemap.ts). Public like the traffic tiles; cached on the phone for a week.
 api.get('/tiles/:z/:x/:y.png', async (req, res) => {
   const [z, x, y] = [req.params.z, req.params.x, req.params.y].map(Number)
-  if (![z, x, y].every(Number.isInteger) || z < 0 || z > 19 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) return res.status(404).end()
+  if (![z, x, y].every(Number.isInteger) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) return res.status(404).end()
   const tile = await basemapTile(z, x, y)
   // No service answered: a blank, uncached tile, so the app retries later instead of switching to
   // a map that needs a key (the app does that after a few failed tiles).

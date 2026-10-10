@@ -125,6 +125,7 @@ class Api {
         if (departAt != null) 'departAt': departAt.toUtc().toIso8601String(),
       })));
   String get trafficTileUrl => '$baseUrl/api/traffic/{z}/{x}/{y}.png';
+  String get mapTileUrl => '$baseUrl/api/tiles/{z}/{x}/{y}.png';
   Future<RouteInfo> route(Place from, Place to) async => RouteInfo.fromJson(_map(await post('/route', {'from': from.toJson(), 'to': to.toJson()})));
 
   /* ---- Rides ---- */

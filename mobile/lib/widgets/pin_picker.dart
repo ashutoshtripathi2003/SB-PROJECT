@@ -138,7 +138,8 @@ class _PinPickerState extends State<_PinPicker> {
         onCameraMove: (p) => _onMove(LatLngPoint(p.target.latitude, p.target.longitude)),
       );
     }
-    final cfg = context.select<Session, String?>((x) => x.config?.tileUrl);
+    // Street map from the RideSync server (see ride_map.dart).
+    final tiles = context.select<Session, String>((x) => x.api.mapTileUrl);
     return fm.FlutterMap(
       mapController: _osm,
       options: fm.MapOptions(
@@ -152,8 +153,7 @@ class _PinPickerState extends State<_PinPicker> {
       ),
       children: [
         fm.TileLayer(
-          urlTemplate: cfg ?? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-          subdomains: const ['a', 'b', 'c', 'd'],
+          urlTemplate: tiles,
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
         ),
