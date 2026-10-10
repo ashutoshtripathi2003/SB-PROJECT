@@ -49,6 +49,7 @@ import { addDemoData, demoCount, removeDemoData } from './ml/demo'
 import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
+import { basemapTile } from './basemap'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
 import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
@@ -100,7 +101,7 @@ const QueryZ = z.object({
 /* ---- Config & auth -------------------------------------------------------- */
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req) }) })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: `${req.protocol}://${req.get('host')}` }) })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -416,6 +417,19 @@ api.get('/traffic/:z/:x/:y.png', async (req, res) => {
   } catch {
     res.status(502).end()
   }
+})
+
+const BLANK_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8+/x/PQAJ3APUJ0lE5gAAAABJRU5ErkJggg==', 'base64')
+
+// Street map for the phone app (see basemap.ts). Public like the traffic tiles; cached on the phone for a week.
+api.get('/tiles/:z/:x/:y.png', async (req, res) => {
+  const [z, x, y] = [req.params.z, req.params.x, req.params.y].map(Number)
+  if (![z, x, y].every(Number.isInteger) || z < 0 || z > 19 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) return res.status(404).end()
+  const tile = await basemapTile(z, x, y)
+  // No service answered: a blank, uncached tile, so the app retries later instead of switching to
+  // a map that needs a key (the app does that after a few failed tiles).
+  if (!tile) return res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(BLANK_TILE)
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=604800', 'Cross-Origin-Resource-Policy': 'cross-origin' }).send(tile.body)
 })
 
 api.post(

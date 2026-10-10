@@ -1,5 +1,6 @@
 import type { Place } from '../src/lib/types'
 import { CAMPUS } from '../src/data/places'
+import { basemapAttribution } from './basemap'
 import { env } from './env'
 import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
 import { isHighway, olaConfigured, olaReverse, olaSearch, tomtomNearby } from './landmarks'
@@ -43,16 +44,16 @@ const CARTO_TILES = {
 }
 
 /**
- * `app`: the phone app asks. MapTiler keys are usually limited to website addresses, and an app
- * isn't a website, so MapTiler answers it with "API key required" tiles. The app gets the free
- * keyless map instead (the website keeps MapTiler / Ola).
+ * `app`: the phone app asks, with `base` = this server's address as the app reached it.
+ * CARTO and MapTiler only serve websites without a key ("API key required" on every tile for
+ * an app), so the app gets its street map through RideSync (see basemap.ts).
  */
-export function mapsConfig({ app = false } = {}) {
+export function mapsConfig({ app = false, base = '' } = {}) {
   const google = googleConfigured() && !env.google.routesOnly
   return {
     google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
     tiles: app
-      ? CARTO_TILES
+      ? { url: `${base}/api/tiles/{z}/{x}/{y}.png`, attribution: basemapAttribution() }
       : maptiler()
       ? {
           url: `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}{r}.png?key=${env.maptilerKey}`,

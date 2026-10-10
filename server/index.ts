@@ -59,6 +59,7 @@ const server = app.listen(env.port, () => {
   console.log(
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${env.google.key ? 'Google (live traffic)' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
   )
+  console.log(`[ridesync] phone app map (through RideSync): ${[env.tomtomKey && 'TomTom', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
   if (env.devLogin) console.log('[ridesync] DEV_LOGIN enabled (local development only)')
 })
 

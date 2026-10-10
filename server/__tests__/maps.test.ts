@@ -9,12 +9,11 @@ afterEach(() => {
 })
 
 describe('MapTiler key check', () => {
-  it('gives the phone app the keyless map, since MapTiler keys are limited to websites', async () => {
+  it('gives the phone app its street map through RideSync, never a keyed or website-only URL', async () => {
     const maps = await import('../maps')
     expect(maps.mapsConfig().tiles.url).toContain('api.maptiler.com')
-    const app = maps.mapsConfig({ app: true }).tiles.url
-    expect(app).toContain('cartocdn.com')
-    expect(app).not.toContain('key=')
+    const app = maps.mapsConfig({ app: true, base: 'https://abc.trycloudflare.com' }).tiles.url
+    expect(app).toBe('https://abc.trycloudflare.com/api/tiles/{z}/{x}/{y}.png')
   })
 
   it('falls back to the free map and search when MapTiler rejects the key', async () => {
