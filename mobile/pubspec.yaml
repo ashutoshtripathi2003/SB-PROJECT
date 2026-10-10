@@ -26,6 +26,8 @@ dependencies:
   qr_flutter: 4.1.0
   flutter_web_auth_2: 5.1.0
   share_plus: 13.3.0
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
 
 dev_dependencies:
   flutter_test:

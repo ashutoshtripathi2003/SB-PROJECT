@@ -8,12 +8,18 @@
     <!-- Profile photo -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Ride updates in the notification bar (Android 13+ asks the user) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="RideSync"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- Google Maps (key comes from GOOGLE_MAPS_ANDROID_KEY at build time) -->
         <meta-data android:name="com.google.android.geo.API_KEY" android:value="${googleMapsKey}" />
+        <!-- Phone notifications (Firebase): channel, icon and colour -->
+        <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="rides" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_icon" android:resource="@drawable/ic_stat_ridesync" />
+        <meta-data android:name="com.google.firebase.messaging.default_notification_color" android:resource="@color/notification_color" />
         <!-- Returns from Sign in with Microsoft (ridesync://auth) -->
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"

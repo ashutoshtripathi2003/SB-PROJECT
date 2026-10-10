@@ -46,3 +46,6 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+# Generated from google-services.json at build time (tool/firebase_android.py)
+android/app/src/main/res/values/firebase.xml
+google-services.json

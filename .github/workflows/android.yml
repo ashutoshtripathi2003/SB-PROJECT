@@ -46,6 +46,19 @@ jobs:
       - name: Check code
         run: flutter analyze && flutter test
 
+      - name: Phone notifications (Firebase)
+        env:
+          # Optional repository secret: the whole google-services.json from the Firebase console.
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > /tmp/google-services.json
+            python3 tool/firebase_android.py /tmp/google-services.json
+            rm /tmp/google-services.json
+          else
+            echo "Phone notifications: off (add the GOOGLE_SERVICES_JSON secret to turn them on)"
+          fi
+
       - name: Build APKs
         env:
           # Optional repository secret: a Google Maps key restricted to Android apps.

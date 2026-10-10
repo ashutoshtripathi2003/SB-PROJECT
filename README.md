@@ -327,6 +327,25 @@ No laptop handy? Open the website in Safari → **Share** → **Add to Home Scre
 - push notifications while the app is closed (Firebase)
 - location sharing with the screen off
 
+## 3f. Phone notifications (Firebase, free)
+
+Ride updates (request accepted, driver on the way, driver arrived, payments, reminders) appear in
+the phone's notification bar even when the app is closed, like Ola and Uber. Without this
+setup, everything still works, but notifications only show inside the app.
+
+1. Go to **console.firebase.google.com** → **Create a project** → name it `RideSync` (Google Analytics can stay off).
+2. **Add app → Android**. Package name: `com.ridesync.ridesync`. Click **Register app** and **download `google-services.json`**. Skip the remaining steps.
+3. GitHub → this repository → **Settings → Secrets and variables → Actions → New repository secret**.
+   Name: `GOOGLE_SERVICES_JSON`. Value: open `google-services.json` in Notepad, copy everything and paste it.
+4. Firebase → ⚙ **Project settings → Service accounts → Generate new private key**. Rename the downloaded file to
+   **`firebase-key.json`** and put it in the RideSync folder, next to `.env`. **It's a secret:** never share it or upload it to GitHub (it's git-ignored).
+5. Run `start.bat`. It should say `phone notifications: Firebase ✓`.
+6. GitHub → **Actions → Android app → Run workflow** (or push any change), then install the new APK. Open the app,
+   sign in, and allow notifications when asked.
+
+When you update RideSync from a new ZIP, copy `firebase-key.json` along with `.env` and `data`.
+iPhone notifications additionally need an Apple developer account (APNs key); Android works without one.
+
 ## 4. Put it online
 
 The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.

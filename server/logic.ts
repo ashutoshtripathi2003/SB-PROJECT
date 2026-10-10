@@ -3,6 +3,7 @@ import type { AppNotification, Booking, BookingStatus, NotificationKind, Place, 
 import { all, one, run, type Row } from './db'
 import { emit, sync } from './events'
 import { env } from './env'
+import { sendPush } from './push'
 
 export const newId = (prefix: string) => `${prefix}_${randomBytes(9).toString('base64url')}`
 export const nowIso = () => new Date().toISOString()
@@ -195,6 +196,8 @@ export function notify(userId: string, kind: NotificationKind, title: string, bo
   const n: AppNotification = { id: newId('n'), userId, kind, title, body, link, read: false, createdAt: nowIso() }
   run(`INSERT INTO notifications (id, user_id, kind, title, body, link, read, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)`, n.id, userId, kind, title, body, link ?? null, n.createdAt)
   emit([userId], { type: 'notification', notification: n })
+  // Also to the phone's notification bar (when Firebase is set up), so it arrives with the app closed.
+  void sendPush(userId, { title, body, link, kind })
 }
 
 export { sync }

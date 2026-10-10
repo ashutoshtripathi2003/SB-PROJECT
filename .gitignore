@@ -6,3 +6,6 @@ coverage
 .env
 /data/
 *.tsbuildinfo
+# Firebase private key for phone notifications — a secret
+firebase-key.json
+*firebase-adminsdk*.json

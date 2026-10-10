@@ -29,6 +29,7 @@ class _HomeShellState extends State<HomeShell> {
   int _requests = 0;
   StreamSubscription<AppNotification>? _notes;
   StreamSubscription<void>? _sync;
+  StreamSubscription<void>? _pushTaps;
 
   /// The assistant conversation, kept while the app is open.
   final List<AssistantMsg> _assistant = [];
@@ -39,7 +40,16 @@ class _HomeShellState extends State<HomeShell> {
     final s = context.read<Session>();
     _notes = s.events?.onNotification.listen(_showBanner);
     _sync = s.events?.onSync.listen((_) => _loadBadges());
+    // A tapped phone notification opens its trip / ride, like tapping it in the inbox.
+    _pushTaps = s.onPushOpened.listen((_) => _openPushLink());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _openPushLink());
     _loadBadges();
+  }
+
+  void _openPushLink() {
+    if (!mounted) return;
+    final link = context.read<Session>().takePushLink();
+    if (link != null) openLink(context, link);
   }
 
   Future<void> _loadBadges() async {
@@ -84,6 +94,7 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _notes?.cancel();
     _sync?.cancel();
+    _pushTaps?.cancel();
     super.dispose();
   }
 

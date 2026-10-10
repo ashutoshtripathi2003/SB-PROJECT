@@ -89,7 +89,10 @@ class Api {
     return (User.fromJson(_map(m['user'])), t);
   }
 
-  Future<void> logout() => post('/auth/logout');
+  Future<void> logout({String? pushToken}) => post('/auth/logout', {'pushToken': ?pushToken});
+
+  /// Lets the server send ride updates to this phone's notification bar.
+  Future<void> registerPush(String token, String platform) => post('/me/push-token', {'token': token, 'platform': platform});
 
   /// Finish Sign in with Microsoft: swap the one-time code from ridesync://auth for a login.
   Future<(User, String)> appExchange(String code) async => _login(await post('/auth/app/exchange', {'code': code}));

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api.dart';
 import '../api/events.dart';
 import '../api/models.dart';
+import 'push.dart';
 
 /// Server built into the app at build time:
 ///   flutter build apk --dart-define=RIDESYNC_SERVER_URL=https://your-server
@@ -39,6 +40,21 @@ class Session extends ChangeNotifier {
 
   /// The rider's latest search, reused when requesting a seat.
   SearchQuery? lastQuery;
+
+  /// This phone's Firebase address (null when phone notifications aren't available).
+  String? pushToken;
+  String? _pendingPushLink;
+  final _pushOpened = StreamController<void>.broadcast();
+
+  /// Fires when a phone notification was tapped; read the link with [takePushLink].
+  Stream<void> get onPushOpened => _pushOpened.stream;
+
+  /// The link of the last tapped phone notification, once.
+  String? takePushLink() {
+    final l = _pendingPushLink;
+    _pendingPushLink = null;
+    return l;
+  }
 
   Api get api => _api!;
   String get server => _api?.baseUrl ?? '';
@@ -131,6 +147,26 @@ class Session extends ChangeNotifier {
     events?.dispose();
     events = LiveEvents(baseUrl: api.baseUrl, token: api.token!)..start();
     _set(statusFor(user!));
+    unawaited(_startPush());
+  }
+
+  Future<void> _startPush() async {
+    Future<void> register(String token) async {
+      pushToken = token;
+      if (_api?.token == null) return;
+      try {
+        await api.registerPush(token, Push.platform);
+      } catch (_) {/* tried again on the next start */}
+    }
+
+    final token = await Push.start(
+      onOpen: (link) {
+        _pendingPushLink = link;
+        _pushOpened.add(null);
+      },
+      onNewToken: register,
+    );
+    if (token != null) await register(token);
   }
 
   void setUser(User u) {
@@ -147,7 +183,7 @@ class Session extends ChangeNotifier {
   Future<void> signOut({bool remote = true}) async {
     if (remote && _api != null) {
       try {
-        await api.logout();
+        await api.logout(pushToken: pushToken);
       } catch (_) {}
     }
     events?.dispose();
@@ -171,6 +207,7 @@ class Session extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pushOpened.close();
     events?.dispose();
     super.dispose();
   }

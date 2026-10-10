@@ -50,6 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
+import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
 import { microsoftConfigured, razorpayConfigured, anyMailConfigured } from './env'
@@ -108,7 +109,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }) })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured() })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -178,9 +179,23 @@ api.post(
 )
 
 api.post('/auth/logout', (req, res) => {
+  // The phone stops getting this account's notifications.
+  const pushToken = typeof req.body?.pushToken === 'string' ? req.body.pushToken : null
+  if (pushToken && req.user) removePushToken(pushToken, String(req.user.id))
   endSession(req, res)
   res.json({ ok: true })
 })
+
+/** The app registers its Firebase address so notifications reach the notification bar. */
+api.post(
+  '/me/push-token',
+  requireUser,
+  h((req) => {
+    const { token, platform } = parse(z.object({ token: z.string().min(20).max(4096), platform: z.enum(['android', 'ios']) }), req.body)
+    savePushToken(meId(req), token, platform)
+    return { ok: true, push: pushConfigured() }
+  }),
+)
 
 /* ---- Profile -------------------------------------------------------------- */
 
