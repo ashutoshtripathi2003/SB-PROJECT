@@ -8,8 +8,9 @@ if /i not "%CD%"=="%USERPROFILE%\SB-PROJECT" (
   echo   and delete or rename this older folder, or your settings and updates will not match.
 )
 where node >nul 2>nul || (echo. & echo   Node.js is not installed. Get the LTS version from https://nodejs.org & echo. & pause & exit /b 1)
-if not exist node_modules (
-  echo Installing RideSync for the first time. This takes a minute...
+rem Install when node_modules is missing or incomplete (an interrupted install or a copied folder).
+if not exist node_modules\.bin\concurrently.cmd (
+  echo Installing RideSync. This takes a minute...
   call npm install || (pause & exit /b 1)
 )
 rem Stop an older RideSync still running in another window, so the website and app
