@@ -5,7 +5,7 @@ process.env.DATABASE_PATH = ':memory:'
 process.env.TOMTOM_KEY = 'tt-key'
 process.env.MAPTILER_KEY = 'mt-key'
 
-const { basemapTile, resetBasemap, basemapAttribution } = await import('../basemap')
+const { basemapTile, resetBasemap, basemapAttribution, checkBasemap } = await import('../basemap')
 const app = (await import('../app')).createApp()
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -35,6 +35,11 @@ describe('street map for the phone app', () => {
     f.mockClear()
     expect((await basemapTile(10, 722, 459))?.source).toBe('osm')
     expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('startup check says which map service works and which refuses', async () => {
+    globalThis.fetch = vi.fn(async (url: string) => (url.includes('tomtom') ? new Response('Forbidden', { status: 403 }) : url.includes('maptiler') ? new Response('x', { status: 429 }) : png())) as unknown as typeof fetch
+    expect(await checkBasemap()).toBe('TomTom ✗ (403 — key refused) · MapTiler ✗ (429 — daily limit reached) · OpenStreetMap ✓')
   })
 
   it('serves tiles over the API and tells the app the address it reached the server on', async () => {

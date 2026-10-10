@@ -52,7 +52,10 @@ export async function basemapTile(z: number, x: number, y: number): Promise<{ bo
     try {
       const res = await fetch(s.url(z, x, y), { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': UA } })
       if (!res.ok || !String(res.headers.get('content-type')).startsWith('image/')) {
-        if ([401, 403, 429].includes(res.status) || res.status >= 500) pausedUntil.set(s.name, Date.now() + 10 * 60_000)
+        if ([401, 403, 429].includes(res.status) || res.status >= 500) {
+          if ((pausedUntil.get(s.name) ?? 0) < Date.now()) console.log(`[ridesync] phone app map: ${NAMES[s.name]} refused (${res.status}) — trying the next map for 10 minutes`)
+          pausedUntil.set(s.name, Date.now() + 10 * 60_000)
+        }
         continue
       }
       const out = { at: Date.now(), body: Buffer.from(await res.arrayBuffer()), source: s.name }
@@ -64,6 +67,25 @@ export async function basemapTile(z: number, x: number, y: number): Promise<{ bo
     }
   }
   return null
+}
+
+const NAMES: Record<string, string> = { tomtom: 'TomTom', maptiler: 'MapTiler', osm: 'OpenStreetMap' }
+
+/** Startup check: asks every map service for one Mumbai tile and says what each one answered. */
+export async function checkBasemap(): Promise<string> {
+  const results = await Promise.all(
+    SOURCES.filter(configured).map(async (s) => {
+      try {
+        const res = await fetch(s.url(12, 2886, 1838), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': UA } })
+        const ok = res.ok && String(res.headers.get('content-type')).startsWith('image/')
+        const hint = res.status === 401 || res.status === 403 ? ' — key refused' : res.status === 429 ? ' — daily limit reached' : ''
+        return `${NAMES[s.name]} ${ok ? '✓' : `✗ (${res.status}${hint})`}`
+      } catch (e) {
+        return `${NAMES[s.name]} ✗ (${(e as Error).name === 'TimeoutError' ? 'no answer' : 'can’t connect'})`
+      }
+    }),
+  )
+  return results.join(' · ')
 }
 
 /** For tests. */

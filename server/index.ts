@@ -8,6 +8,7 @@ import { checkRazorpay } from './razorpay'
 import { sendRideReminders } from './routes'
 import { trainAll } from './ml/models'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
+import { checkBasemap } from './basemap'
 import { pushConfigured, pushProject } from './push'
 
 const app = createApp()
@@ -61,7 +62,7 @@ const server = app.listen(env.port, () => {
     `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${env.google.key ? 'Google (live traffic)' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
   )
   console.log(pushConfigured() ? `[ridesync] phone notifications: Firebase ✓ (project ${pushProject()})` : '[ridesync] phone notifications: off — add firebase-key.json to this folder (see README › Phone notifications)')
-  console.log(`[ridesync] phone app map (through RideSync): ${[env.tomtomKey && 'TomTom', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
+  void checkBasemap().then((r) => console.log(`[ridesync] phone app map check: ${r}${r.includes('✓') ? '' : '  ⚠ NO MAP SERVICE WORKS — the app map will be blank. Check TOMTOM_KEY (developer.tomtom.com → your app → Map Display API must be on) and the laptop’s internet.'}`))
   if (env.devLogin) console.log('[ridesync] DEV_LOGIN enabled (local development only)')
 })
 
