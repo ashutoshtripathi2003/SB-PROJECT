@@ -99,8 +99,8 @@ const QueryZ = z.object({
 
 /* ---- Config & auth -------------------------------------------------------- */
 
-api.get('/config', (_req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig() })
+api.get('/config', (req, res) => {
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req) }) })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.

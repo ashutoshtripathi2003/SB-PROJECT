@@ -37,19 +37,28 @@ export async function checkMapTiler(): Promise<'ok' | 'rejected' | 'unreachable'
   }
 }
 
-export function mapsConfig() {
+const CARTO_TILES = {
+  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
+}
+
+/**
+ * `app`: the phone app asks. MapTiler keys are usually limited to website addresses, and an app
+ * isn't a website, so MapTiler answers it with "API key required" tiles. The app gets the free
+ * keyless map instead (the website keeps MapTiler / Ola).
+ */
+export function mapsConfig({ app = false } = {}) {
   const google = googleConfigured() && !env.google.routesOnly
   return {
     google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
-    tiles: maptiler()
+    tiles: app
+      ? CARTO_TILES
+      : maptiler()
       ? {
           url: `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}{r}.png?key=${env.maptilerKey}`,
           attribution: '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         }
-      : {
-          url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-        },
+      : CARTO_TILES,
     // Sharp vector map with 3D buildings on the website.
     vectorStyle: maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
     // Ola Maps' Indian map style first when there's an Ola key; the one above if it can't load.

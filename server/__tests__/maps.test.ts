@@ -1,21 +1,17 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import request from 'supertest'
+import { describe, expect, it } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
-process.env.MAPTILER_KEY = 'wrong-key'
+process.env.MAPTILER_KEY = 'test-maptiler-key'
 
-const realFetch = globalThis.fetch
-afterEach(() => {
-  globalThis.fetch = realFetch
-})
+const app = (await import('../app')).createApp()
 
-describe('MapTiler key check', () => {
-  it('falls back to the free map and search when MapTiler rejects the key', async () => {
-    const maps = await import('../maps')
-    expect(maps.mapsConfig().tiles.url).toContain('api.maptiler.com')
-    globalThis.fetch = vi.fn(async () => new Response('Invalid key', { status: 403 })) as typeof fetch
-    expect(await maps.checkMapTiler()).toBe('rejected')
-    const cfg = maps.mapsConfig()
-    expect(cfg.tiles.url).toContain('cartocdn.com')
-    expect(cfg.search).toBe('openstreetmap')
+describe('map tiles', () => {
+  it('website gets MapTiler, the phone app gets the keyless map', async () => {
+    const web = (await request(app).get('/api/config')).body.maps
+    expect(web.tiles.url).toContain('api.maptiler.com')
+    const phone = (await request(app).get('/api/config').set('x-ridesync-app', '1')).body.maps
+    expect(phone.tiles.url).toContain('basemaps.cartocdn.com')
+    expect(phone.tiles.url).not.toContain('key=')
   })
 })
