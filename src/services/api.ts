@@ -373,6 +373,13 @@ export const admin = {
   removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
 }
 
+export type AssistantAction =
+  | { type: 'search'; label: string; query: { pickup: Place; drop: Place; date?: string; time?: string; seats?: number } }
+  | { type: 'link'; label: string; to: string }
+  | { type: 'call'; label: string; tel: string }
+export type AssistantReply = { intent: string; confidence: number; reply: string; actions: AssistantAction[]; suggestions: string[] }
+export const assistant = { ask: (text: string) => post<AssistantReply>('/assistant', { text }) }
+
 export type DemoCount = { users: number; rides: number; bookings: number }
 export type MlModel = {
   name: 'match' | 'risk' | 'eta' | 'demand'
@@ -391,6 +398,7 @@ export type MlReport = {
   models: MlModel[]
   forecast: { hours: { at: string; expected: number }[]; areas: { area: string; trips: number }[]; backtestMae: number | null } | null
   demo: DemoCount
+  assistant?: { accuracy: number; examples: number; intents: number; messages30d: number; understoodRate: number | null; topIntents: { intent: string; n: number }[] }
 }
 
 export async function saveVehicle(v: Omit<Vehicle, 'id'>) {

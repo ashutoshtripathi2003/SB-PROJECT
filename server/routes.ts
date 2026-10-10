@@ -47,6 +47,7 @@ import { accuracy, recordDrop, recordPickup } from './calibrate'
 import { acceptChance, mlReport, noShowRisk, trainAll } from './ml/models'
 import { addDemoData, demoCount, removeDemoData } from './ml/demo'
 import { checkIdCard, type IdOcr } from './ocr'
+import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -1718,7 +1719,7 @@ api.get(
   requireUser,
   h((req) => {
     requireAdmin(req)
-    return { ...mlReport(), demo: demoCount() }
+    return { ...mlReport(), demo: demoCount(), assistant: assistantStats() }
   }),
 )
 
@@ -1754,5 +1755,16 @@ api.delete(
     trainAll()
     broadcastSync()
     return { removed, demo: demoCount() }
+  }),
+)
+
+/* ---- RideSync Assistant (NLP chatbot) --------------------------------------- */
+
+api.post(
+  '/assistant',
+  requireOnboarded,
+  h(async (req) => {
+    const { text } = parse(z.object({ text: z.string().trim().min(1).max(300) }), req.body)
+    return answer(meId(req), first(String(me(req).name)), text)
   }),
 )

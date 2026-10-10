@@ -1474,3 +1474,37 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
 :root[data-theme="dark"] .badge--ai { background: #2a2350; color: #c9bdff; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge--ai { background: #2a2350; color: #c9bdff; } }
 .admin-group dl.ai-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+/* ---- RideSync Assistant (chatbot) ----------------------------------------- */
+.assistant-fab { position: fixed; right: 16px; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 60; width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; border: 0; color: #fff; background: linear-gradient(135deg, var(--primary-600), #1a73e8); box-shadow: var(--shadow-lg); cursor: pointer; }
+.assistant-fab svg { width: 26px; height: 26px; }
+@media (min-width: 900px) { .assistant-fab { bottom: 24px; right: 24px; } }
+.assistant { position: fixed; z-index: 70; right: 12px; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); height: min(620px, calc(100dvh - 90px)); display: flex; flex-direction: column; border-radius: 20px; background: var(--surface); box-shadow: var(--shadow-sheet, var(--shadow-lg)); border: 1px solid var(--border); overflow: hidden; }
+@media (min-width: 600px) { .assistant { left: auto; width: 400px; right: 24px; bottom: 24px; } }
+.assistant__head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--border); }
+.assistant__avatar { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: #fff; background: linear-gradient(135deg, var(--primary-600), #1a73e8); flex: none; }
+.assistant__avatar svg { width: 20px; height: 20px; }
+.assistant__list { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; background: var(--surface-sunken); }
+.assistant__msg { max-width: 88%; display: flex; flex-direction: column; gap: 8px; }
+.assistant__msg p { margin: 0; padding: 10px 12px; border-radius: 16px; font-size: 14px; line-height: 1.45; }
+.assistant__msg--bot { align-self: flex-start; }
+.assistant__msg--bot p { background: var(--surface); color: var(--ink-900); border-bottom-left-radius: 4px; }
+.assistant__msg--me { align-self: flex-end; }
+.assistant__msg--me p { background: var(--primary-600); color: #fff; border-bottom-right-radius: 4px; }
+.assistant__actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.assistant__actions .btn__label { display: inline-flex; align-items: center; gap: 6px; }
+.assistant__actions svg { width: 14px; height: 14px; }
+.assistant__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.assistant__meta { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-500); }
+.assistant__meta svg { width: 11px; height: 11px; }
+.assistant__typing { flex-direction: row; gap: 4px; padding: 12px; background: var(--surface); border-radius: 16px; width: fit-content; }
+.assistant__typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-500); animation: assist-dot 1.1s infinite; }
+.assistant__typing i:nth-child(2) { animation-delay: .15s; }
+.assistant__typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes assist-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .assistant__typing i { animation: none; } }
+.assistant__form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); background: var(--surface); }
+.assistant__form input { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--ink-900); font-size: 15px; outline: none; }
+.assistant__form input:focus { border-color: var(--primary-600); box-shadow: 0 0 0 3px var(--primary-100); }
+.assistant__send { background: var(--primary-600); color: #fff; border-radius: 50%; width: 44px; height: 44px; }
+.assistant__send:disabled { opacity: .5; }

@@ -58,7 +58,7 @@ export function AiTab() {
 
   if (q.loading) return <RideCardSkeleton />
   if (!q.data) return <NetworkError onRetry={q.reload} />
-  const { models, forecast, demo } = q.data
+  const { models, forecast, demo, assistant } = q.data
   const demoOn = demo.users > 0
 
   return (
@@ -105,6 +105,7 @@ export function AiTab() {
         {models.map((m) => (
           <ModelCard key={m.name} m={m} />
         ))}
+        {assistant && <AssistantCard a={assistant} />}
       </div>
 
       {forecast && <Forecast f={forecast} />}
@@ -232,6 +233,65 @@ function Forecast({ f }: { f: NonNullable<MlReport['forecast']> }) {
               </Badge>
             ))}
           </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function AssistantCard({ a }: { a: NonNullable<MlReport['assistant']> }) {
+  const max = Math.max(1, ...a.topIntents.map((t) => t.n))
+  return (
+    <section className="admin-group ai-card">
+      <div className="row row--between gap-2">
+        <span className="row gap-2" style={{ minWidth: 0 }}>
+          <span className="ai-card__icon">
+            <Brain />
+          </span>
+          <span className="stack" style={{ minWidth: 0 }}>
+            <span className="t-body t-strong">RideSync Assistant (chatbot)</span>
+            <span className="t-caption t-muted" style={{ fontWeight: 400 }}>
+              NLP · TF-IDF + Multinomial Naive Bayes, entity extraction
+            </span>
+          </span>
+        </span>
+        <Badge tone="success">Trained</Badge>
+      </div>
+      <p className="t-sm t-secondary">Understands students’ messages in English and Hinglish — finds rides, checks trips and answers questions. Places, dates, times and seats are pulled out of the sentence.</p>
+      <dl className="ai-metrics">
+        <div>
+          <dt>Accuracy (5-fold cross-validation)</dt>
+          <dd className="tabular">{Math.round(a.accuracy * 100)}%</dd>
+        </div>
+        <div>
+          <dt>Training sentences · intents</dt>
+          <dd className="tabular">
+            {a.examples} · {a.intents}
+          </dd>
+        </div>
+        <div>
+          <dt>Messages (30 days)</dt>
+          <dd className="tabular">{a.messages30d}</dd>
+        </div>
+        <div>
+          <dt>Understood</dt>
+          <dd className="tabular">{a.understoodRate === null ? '—' : `${Math.round(a.understoodRate * 100)}%`}</dd>
+        </div>
+      </dl>
+      {a.topIntents.length > 0 && (
+        <div className="stack gap-2">
+          <span className="t-sm t-strong">What students ask most</span>
+          <ul className="ai-bars">
+            {a.topIntents.map((t) => (
+              <li key={t.intent}>
+                <span className="ai-bars__label">{t.intent.replace('_', ' ')}</span>
+                <span className="ai-bars__track">
+                  <i style={{ width: `${(t.n / max) * 100}%` }} />
+                </span>
+                <span className="ai-bars__value tabular">{t.n}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>

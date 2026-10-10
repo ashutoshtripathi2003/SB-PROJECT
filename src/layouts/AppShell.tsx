@@ -8,6 +8,7 @@ import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { Button, cx } from '@/components/ui'
 import { useOnline } from '@/hooks'
+import { Assistant } from '@/components/Assistant'
 import { connectEvents, onNotification, revalidate, useMe } from '@/services/api'
 
 /** Authenticated shell: top navigation (desktop) / bottom nav (mobile), live updates, toasts. */
@@ -49,6 +50,8 @@ export function AppShell({ nav }: { nav: boolean }) {
   return (
     <div className={cx('app', nav ? 'app--with-nav' : user.onboarded && 'app--with-topnav')}>
       {user.onboarded && <TopNav />}
+      {/* Chat assistant on the main tabs (kept off map screens so it never covers ride controls). */}
+      {user.onboarded && nav && <Assistant />}
       <main className="app__main">
         <AnimatePresence>
           {!online && (
