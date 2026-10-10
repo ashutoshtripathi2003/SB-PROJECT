@@ -16,12 +16,15 @@ class LiveEvents {
   final _sync = StreamController<void>.broadcast();
   final _notifications = StreamController<AppNotification>.broadcast();
   final _locations = StreamController<(String rideId, DriverLocation location)>.broadcast();
+  final _riderLocations = StreamController<(String rideId, String bookingId, RiderLocation location)>.broadcast();
   final _connected = StreamController<bool>.broadcast();
 
   /// Something changed on the server — refetch what's on screen.
   Stream<void> get onSync => _sync.stream;
   Stream<AppNotification> get onNotification => _notifications.stream;
   Stream<(String, DriverLocation)> get onLocation => _locations.stream;
+  /// Driver only: a waiting rider's phone location.
+  Stream<(String, String, RiderLocation)> get onRiderLocation => _riderLocations.stream;
   Stream<bool> get onConnection => _connected.stream;
 
   http.Client? _client;
@@ -77,6 +80,8 @@ class LiveEvents {
           _sync.add(null);
         case 'location':
           _locations.add(('${ev['rideId']}', DriverLocation.fromJson((ev['location'] as Map).cast<String, dynamic>())));
+        case 'riderLocation':
+          _riderLocations.add(('${ev['rideId']}', '${ev['bookingId']}', RiderLocation.fromJson((ev['location'] as Map).cast<String, dynamic>())));
       }
     } catch (_) {
       /* ignore malformed events */
@@ -104,6 +109,7 @@ class LiveEvents {
     _sync.close();
     _notifications.close();
     _locations.close();
+    _riderLocations.close();
     _connected.close();
   }
 }

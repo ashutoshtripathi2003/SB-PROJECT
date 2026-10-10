@@ -276,6 +276,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             fare: m.fare,
                             score: m.score,
                             tier: m.tier,
+                            aiChance: m.aiChance,
                             onTap: () {
                               setState(() => _selected = m.ride.id);
                               Navigator.push(context, MaterialPageRoute(builder: (_) => RideDetailsScreen(rideId: m.ride.id, match: m)));

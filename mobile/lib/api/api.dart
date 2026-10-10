@@ -165,6 +165,13 @@ class Api {
     return (url: '${m['url'] ?? ''}', text: '${m['text'] ?? ''}', local: m['local'] == true);
   }
 
+  /// Rider: this phone's live location for the driver, until pickup.
+  Future<void> riderLocation(String id, double lat, double lng, double? accuracy) =>
+      post('/bookings/$id/rider-location', {'lat': lat, 'lng': lng, 'accuracy': accuracy == null || !accuracy.isFinite || accuracy < 0 ? null : accuracy.round().clamp(0, 10000)});
+
+  /// Driver waited 5+ minutes after arriving and the rider never came.
+  Future<void> noShow(String id) => post('/bookings/$id/no-show');
+
   Future<void> dropped(String id) => post('/bookings/$id/dropped');
   Future<void> rate(String id, int stars, [List<String> tags = const []]) => post('/bookings/$id/rate', {'stars': stars, if (tags.isNotEmpty) 'tags': tags});
 
@@ -194,6 +201,10 @@ class Api {
     final m = _map(await get('/badges'));
     return (unread: (m['unread'] as num?)?.toInt() ?? 0, requests: (m['requests'] as num?)?.toInt() ?? 0);
   }
+
+  /* ---- RideSync Assistant ---- */
+
+  Future<AssistantReply> assistant(String text) async => AssistantReply.fromJson(_map(await post('/assistant', {'text': text})));
 
   /* ---- Admin dashboard (admins only) ---- */
 

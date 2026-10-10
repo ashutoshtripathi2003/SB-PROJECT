@@ -33,6 +33,15 @@ String ago(DateTime t) {
   return dayOf(t);
 }
 
+/// "Just now" for under 45 s, else like [ago].
+String seen(DateTime t) => DateTime.now().difference(t).inSeconds < 45 ? 'just now' : ago(t);
+
+/// 5:07
+String mmss(int s) => '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+
+/// Riders get 5 minutes after the driver arrives; then the driver may mark a no-show.
+const freeWaitSeconds = 5 * 60;
+
 const preferenceLabel = {
   'quiet': 'Quiet ride',
   'female_friendly': 'Female-friendly',

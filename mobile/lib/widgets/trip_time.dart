@@ -112,3 +112,31 @@ MapPin? etaPin(List<LatLngPoint> route, TripEta eta, [LatLngPoint? at]) {
   };
   return MapPin(p, 'eta', label: minutes(eta.minutes), sublabel: sub, tone: eta.traffic);
 }
+
+/// Seconds since [since], ticking every second — the wait timer at pickup.
+class WaitedBuilder extends StatefulWidget {
+  const WaitedBuilder({super.key, required this.since, required this.builder});
+  final DateTime since;
+  final Widget Function(BuildContext context, int seconds) builder;
+  @override
+  State<WaitedBuilder> createState() => _WaitedBuilderState();
+}
+
+class _WaitedBuilderState extends State<WaitedBuilder> {
+  late final Timer _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tick.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, DateTime.now().difference(widget.since).inSeconds.clamp(0, 1 << 31));
+}

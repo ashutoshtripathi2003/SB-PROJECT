@@ -70,13 +70,16 @@ class DriverRow extends StatelessWidget {
 
 /// A ride offer in lists (Home feed, search results).
 class RideCard extends StatelessWidget {
-  const RideCard({super.key, required this.ride, required this.driver, required this.vehicle, this.fare, this.score, this.tier, this.onTap});
+  const RideCard({super.key, required this.ride, required this.driver, required this.vehicle, this.fare, this.score, this.tier, this.aiChance, this.onTap});
   final Ride ride;
   final PublicUser driver;
   final Vehicle vehicle;
   final int? fare;
   final int? score;
   final String? tier;
+
+  /// ML chance the driver accepts; "✨ AI pick" from 75%.
+  final double? aiChance;
   final VoidCallback? onTap;
 
   @override
@@ -91,7 +94,10 @@ class RideCard extends StatelessWidget {
           if (score != null) ...[MatchBadge(score: score!, tier: tier), const SizedBox(width: 8)],
           Text(money(fare ?? ride.farePerSeat), style: RS.heading(18, color: RS.primary)),
         ]),
-        if (ride.womenOnly) ...[const SizedBox(height: 8), const WomenOnlyPill()],
+        if (ride.womenOnly || (aiChance ?? 0) >= 0.75) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [if (ride.womenOnly) const WomenOnlyPill(), if ((aiChance ?? 0) >= 0.75) const AiPill('AI pick')]),
+        ],
         const SizedBox(height: 12),
         RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: timeOf(arrive), dense: true),
         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider()),
@@ -119,4 +125,41 @@ class MatchBadge extends StatelessWidget {
     };
     return Pill('$score% match', color: fg, background: bg, icon: Icons.auto_awesome);
   }
+}
+
+/// Purple gradient pill for hints from RideSync's ML models ("✨ AI pick").
+class AiPill extends StatelessWidget {
+  const AiPill(this.label, {super.key, this.tooltip});
+  final String label;
+  final String? tooltip;
+  static const fg = Color(0xFF4A2FC4);
+  @override
+  Widget build(BuildContext context) {
+    final pill = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFEFE9FF), Color(0xFFE3EDFF)]), borderRadius: BorderRadius.circular(999)),
+      child: Text('✨ $label', style: const TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600)),
+    );
+    return tooltip == null ? pill : Tooltip(message: tooltip!, child: pill);
+  }
+}
+
+/// "✨ AI: 82% likely to accept" — the match model's prediction for this request.
+class AiChancePill extends StatelessWidget {
+  const AiChancePill(this.chance, {super.key});
+  final double chance;
+  @override
+  Widget build(BuildContext context) => AiPill('AI: ${(chance * 100).round()}% likely to accept', tooltip: 'Predicted by RideSync’s matching model from past requests');
+}
+
+/// Rider reliability from the no-show/cancellation model.
+class ReliabilityPill extends StatelessWidget {
+  const ReliabilityPill(this.risk, {super.key});
+  final double risk;
+  @override
+  Widget build(BuildContext context) => risk < 0.25
+      ? const Pill('Usually shows up', color: RS.success, background: RS.success50)
+      : risk < 0.5
+          ? const Pill('Sometimes cancels', color: RS.warning, background: RS.warning50)
+          : const Pill('Often cancels', color: RS.danger, background: RS.danger50);
 }

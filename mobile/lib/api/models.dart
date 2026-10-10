@@ -174,6 +174,17 @@ class DriverLocation {
       DriverLocation(_d(j['lat']), _d(j['lng']), j['heading'] == null ? null : _d(j['heading']), _t(j['at']));
 }
 
+/// The rider's phone location, shared with their driver from confirmation until pickup (Uber/Ola style).
+class RiderLocation {
+  final double lat;
+  final double lng;
+  final double? accuracy;
+  final DateTime at;
+  const RiderLocation(this.lat, this.lng, this.accuracy, this.at);
+  factory RiderLocation.fromJson(Map<String, dynamic> j) => RiderLocation(_d(j['lat']), _d(j['lng']), j['accuracy'] == null ? null : _d(j['accuracy']), _t(j['at']));
+  LatLngPoint get point => LatLngPoint(lat, lng);
+}
+
 class Ride {
   final String id;
   final String driverId;
@@ -237,6 +248,9 @@ class Booking {
   final int? riderRating;
   final int? driverRating;
 
+  /// When the driver tapped "I've arrived" — starts the 5-minute free wait.
+  final DateTime? arrivedAt;
+
   Booking.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         rideId = _s(j['rideId']),
@@ -255,7 +269,8 @@ class Booking {
         cancelledBy = _ns(j['cancelledBy']),
         cancelReason = _ns(j['cancelReason']),
         riderRating = j['riderRating'] == null ? null : _i(j['riderRating']),
-        driverRating = j['driverRating'] == null ? null : _i(j['driverRating']);
+        driverRating = j['driverRating'] == null ? null : _i(j['driverRating']),
+        arrivedAt = j['arrivedAt'] == null || j['arrivedAt'] == '' ? null : _t(j['arrivedAt']);
 
   bool get isPaid => const ['marked_paid', 'received', 'paid_online'].contains(paymentStatus);
   bool get isActive => const ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(status);
@@ -277,6 +292,9 @@ class MatchResult {
   final List<String> caveats;
   final String? history;
 
+  /// ML: chance (0–1) the driver accepts this request. Only when the server's model is trained.
+  final double? aiChance;
+
   MatchResult.fromJson(Map<String, dynamic> j)
       : ride = Ride.fromJson((j['ride'] as Map).cast<String, dynamic>()),
         driver = PublicUser.fromJson((j['driver'] as Map).cast<String, dynamic>()),
@@ -291,7 +309,8 @@ class MatchResult {
         fare = _i(j['fare']),
         reasons = _strings(j['reasons']),
         caveats = _strings(j['caveats']),
-        history = _ns(j['history']);
+        history = _ns(j['history']),
+        aiChance = j['aiChance'] is num ? _d(j['aiChance']) : null;
 }
 
 class FeedItem {
@@ -308,10 +327,18 @@ class RiderBooking {
   final Booking booking;
   final PublicUser rider;
   final String? riderPhone;
+
+  /// Where the rider is right now (before pickup, fresh ≤10 min).
+  final RiderLocation? riderLocation;
+
+  /// ML: chance (0–1) this rider cancels or doesn't show up.
+  final double? noShowRisk;
   RiderBooking.fromJson(Map<String, dynamic> j)
       : booking = Booking.fromJson(j),
         rider = PublicUser.fromJson((j['rider'] as Map).cast<String, dynamic>()),
-        riderPhone = _ns((j['rider'] as Map)['phone']);
+        riderPhone = _ns((j['rider'] as Map)['phone']),
+        riderLocation = j['riderLocation'] is Map ? RiderLocation.fromJson((j['riderLocation'] as Map).cast<String, dynamic>()) : null,
+        noShowRisk = j['noShowRisk'] is num ? _d(j['noShowRisk']) : null;
 }
 
 class RideDetail {
@@ -578,4 +605,59 @@ class SearchQuery {
       'preferences': preferences,
     };
   }
+}
+
+/// A button under an assistant reply: run a search, open a screen, or call a number.
+class AssistantAction {
+  final String type; // search | link | call
+  final String label;
+  final String? to;
+  final String? tel;
+  final Place? pickup;
+  final Place? drop;
+
+  /// yyyy-mm-dd and HH:mm in the rider's local time.
+  final String? date;
+  final String? time;
+  final int seats;
+  AssistantAction.fromJson(Map<String, dynamic> j)
+      : type = _s(j['type']),
+        label = _s(j['label']),
+        to = _ns(j['to']),
+        tel = _ns(j['tel']),
+        pickup = (j['query'] as Map?)?['pickup'] is Map ? Place.fromJson(((j['query'] as Map)['pickup'] as Map).cast<String, dynamic>()) : null,
+        drop = (j['query'] as Map?)?['drop'] is Map ? Place.fromJson(((j['query'] as Map)['drop'] as Map).cast<String, dynamic>()) : null,
+        date = _ns((j['query'] as Map?)?['date']),
+        time = _ns((j['query'] as Map?)?['time']),
+        seats = (j['query'] as Map?)?['seats'] is num ? _i((j['query'] as Map)['seats']) : 1;
+
+  /// The search this action runs, at [date] + [time] (or [fallback] for whichever is missing).
+  SearchQuery? query(DateTime fallback) {
+    if (type != 'search' || pickup == null || drop == null) return null;
+    final d = date == null ? null : RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(date!);
+    final t = time == null ? null : RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(time!);
+    final at = DateTime(
+      d == null ? fallback.year : int.parse(d[1]!),
+      d == null ? fallback.month : int.parse(d[2]!),
+      d == null ? fallback.day : int.parse(d[3]!),
+      t == null ? fallback.hour : int.parse(t[1]!),
+      t == null ? fallback.minute : int.parse(t[2]!),
+    );
+    return SearchQuery(pickup: pickup!, drop: drop!, at: at, seats: seats.clamp(1, 6));
+  }
+}
+
+/// What the RideSync Assistant understood and answered.
+class AssistantReply {
+  final String intent;
+  final double confidence;
+  final String reply;
+  final List<AssistantAction> actions;
+  final List<String> suggestions;
+  AssistantReply.fromJson(Map<String, dynamic> j)
+      : intent = _s(j['intent']).isEmpty ? 'unknown' : _s(j['intent']),
+        confidence = _d(j['confidence']),
+        reply = _s(j['reply']),
+        actions = _maps(j['actions']).map(AssistantAction.fromJson).where((a) => const ['search', 'link', 'call'].contains(a.type)).toList(),
+        suggestions = _strings(j['suggestions']);
 }

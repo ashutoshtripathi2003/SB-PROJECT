@@ -9,6 +9,7 @@ import '../data/places.dart';
 import '../state/session.dart';
 import '../theme.dart';
 import '../util/format.dart';
+import '../util/geo.dart';
 import '../widgets/common.dart';
 import '../widgets/place_picker.dart';
 import '../widgets/ride_card.dart';
@@ -235,6 +236,27 @@ class _DriveScreenState extends State<DriveScreen> {
   String? _gpsError;
   DateTime _lastSent = DateTime(2000);
 
+  // Riders waiting for pickup share their phone's live location (Uber/Ola style), by booking id.
+  final Map<String, RiderLocation> _riderLocs = {};
+  StreamSubscription<(String, String, RiderLocation)>? _riderSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _riderSub = context.read<Session>().events?.onRiderLocation.listen((e) {
+      if (e.$1 == widget.rideId && mounted) setState(() => _riderLocs[e.$2] = e.$3);
+    });
+  }
+
+  /// The freshest known location of a rider who hasn't been picked up yet (≤10 min old).
+  RiderLocation? _liveAt(RiderBooking r) {
+    if (!const ['confirmed', 'driver_arriving', 'driver_arrived'].contains(r.booking.status)) return null;
+    final a = r.riderLocation;
+    final b = _riderLocs[r.booking.id];
+    final l = a == null ? b : (b == null || a.at.isAfter(b.at) ? a : b);
+    return l == null || DateTime.now().difference(l.at).inMinutes >= 10 ? null : l;
+  }
+
   Future<void> _startSharing() async {
     if (_gps != null) return;
     try {
@@ -264,6 +286,7 @@ class _DriveScreenState extends State<DriveScreen> {
   @override
   void dispose() {
     _stopSharing();
+    _riderSub?.cancel();
     super.dispose();
   }
 
@@ -320,7 +343,11 @@ class _DriveScreenState extends State<DriveScreen> {
           MapPin(ride.origin.point, 'pickup', label: ride.origin.name, sublabel: 'Leave ${timeOf(ride.departAt)}'),
           MapPin(ride.destination.point, 'drop', label: ride.destination.name, sublabel: eta == null ? null : 'Arrive ~${timeOf(eta.arrive)}'),
           ?bubble,
-          for (final r in riders.where((r) => r.booking.isActive)) MapPin(r.booking.pickup.point, 'me', label: '${r.rider.firstName}’s pickup'),
+          for (final r in riders.where((r) => r.booking.isActive))
+            if (_liveAt(r) case final at?)
+              MapPin(at.point, 'me', label: r.rider.firstName, sublabel: 'Live · ${seen(at.at)}')
+            else
+              MapPin(r.booking.pickup.point, 'me', label: '${r.rider.firstName}’s pickup'),
           if (me != null) MapPin(me, 'car', heading: _pos!.heading),
         ],
       ),
@@ -345,6 +372,7 @@ class _DriveScreenState extends State<DriveScreen> {
                 child: Panel(
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     DriverRow(driver: r.rider, trailing: Text(money(r.booking.fare), style: RS.heading(16, color: RS.primary))),
+                    if (r.noShowRisk != null) ...[const SizedBox(height: 8), Align(alignment: Alignment.centerLeft, child: ReliabilityPill(r.noShowRisk!))],
                     const SizedBox(height: 10),
                     RouteLine(from: r.booking.pickup, to: r.booking.drop, dense: true),
                     if (r.booking.message != null) ...[const SizedBox(height: 8), Text('“${r.booking.message}”', style: const TextStyle(fontStyle: FontStyle.italic, color: RS.ink700))],
@@ -360,7 +388,7 @@ class _DriveScreenState extends State<DriveScreen> {
           ],
           SectionTitle('Riders (${riders.length})'),
           if (riders.isEmpty) const Text('No riders yet. Requests appear here instantly with a notification.', style: TextStyle(color: RS.ink500)),
-          for (final r in riders) Padding(padding: const EdgeInsets.only(bottom: 10), child: _RiderPanel(r: r, rideStatus: ride.status)),
+          for (final r in riders) Padding(padding: const EdgeInsets.only(bottom: 10), child: _RiderPanel(r: r, rideStatus: ride.status, liveAt: _liveAt(r))),
           const SizedBox(height: 12),
           if (ride.status == 'scheduled') ...[
             LoadingButton(
@@ -401,9 +429,12 @@ class _DriveScreenState extends State<DriveScreen> {
 }
 
 class _RiderPanel extends StatelessWidget {
-  const _RiderPanel({required this.r, required this.rideStatus});
+  const _RiderPanel({required this.r, required this.rideStatus, this.liveAt});
   final RiderBooking r;
   final String rideStatus;
+
+  /// The rider's live phone location before pickup, when they share it.
+  final RiderLocation? liveAt;
 
   @override
   Widget build(BuildContext context) {
@@ -422,6 +453,38 @@ class _RiderPanel extends StatelessWidget {
         DriverRow(driver: r.rider, trailing: Pill.status(b.status, bookingStatusLabel[b.status] ?? b.status)),
         const SizedBox(height: 10),
         RouteLine(from: b.pickup, to: b.drop, dense: true),
+        if (r.noShowRisk != null) ...[const SizedBox(height: 8), Align(alignment: Alignment.centerLeft, child: ReliabilityPill(r.noShowRisk!))],
+        if (liveAt != null) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            const Icon(Icons.my_location, size: 15, color: RS.success),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text('Live location · ${km(haversineKm(liveAt!.point, b.pickup.point))} from pickup · ${seen(liveAt!.at)}', style: const TextStyle(color: RS.success, fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+        ],
+        // Free wait after arriving; then the driver may mark a no-show.
+        if (b.status == 'driver_arrived' && b.arrivedAt != null)
+          WaitedBuilder(
+            since: b.arrivedAt!,
+            builder: (context, waited) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const SizedBox(height: 8),
+              Text(
+                'Waiting ${mmss(waited)}${waited < freeWaitSeconds ? ' · free wait ends in ${mmss(freeWaitSeconds - waited)}' : ' · you can mark them as no-show'}',
+                style: TextStyle(color: waited < freeWaitSeconds ? RS.warning : RS.danger, fontSize: 13, fontWeight: FontWeight.w600),
+              ),
+              if (rideStatus == 'in_progress' && waited >= freeWaitSeconds) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => attempt(context, () => api.noShow(b.id), success: '${r.rider.firstName} marked as no-show'),
+                  style: OutlinedButton.styleFrom(foregroundColor: RS.danger, side: const BorderSide(color: RS.danger)),
+                  icon: const Icon(Icons.person_off_outlined, size: 18),
+                  label: const Text('Didn’t come'),
+                ),
+              ],
+            ]),
+          ),
         const SizedBox(height: 8),
         Text('${money(b.fare)} · ${paymentLabel(b.paymentMethod, b.paymentStatus)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
         const SizedBox(height: 10),
@@ -436,7 +499,8 @@ class _RiderPanel extends StatelessWidget {
           if (const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(b.status))
             FilledButton.tonalIcon(
               onPressed: () {
-                final to = b.status == 'in_progress' ? b.drop : b.pickup;
+                // To where the rider actually is, when they share their live location.
+                final to = b.status == 'in_progress' ? b.drop.point : (liveAt?.point ?? b.pickup.point);
                 openUrl(context, 'https://www.google.com/maps/dir/?api=1&destination=${to.lat},${to.lng}&travelmode=driving');
               },
               icon: const Icon(Icons.navigation_outlined, size: 18),

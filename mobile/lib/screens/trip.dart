@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
@@ -20,6 +21,7 @@ import '../widgets/motion.dart';
 import '../widgets/ride_card.dart';
 import '../widgets/ride_map.dart';
 import '../widgets/safety.dart';
+import '../widgets/trip_time.dart';
 import 'chat.dart';
 import 'drive.dart';
 import 'find.dart';
@@ -152,6 +154,7 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
                   const SizedBox(height: 12),
                   Wrap(spacing: 8, runSpacing: 8, children: [
                     if (ride.womenOnly) const WomenOnlyPill(),
+                    if (m?.aiChance != null) AiChancePill(m!.aiChance!),
                     Pill('${ride.seatsLeft} of ${ride.seatsTotal} seats left', icon: Icons.event_seat_outlined),
                     if (d.driver.ridesOffered > 0) Pill('${d.driver.ridesOffered} rides driven', color: RS.ink700, background: RS.sunken),
                     if (d.driver.ratingCount > 0) Pill('${(d.driver.completionRate * 100).round()}% completed', color: RS.ink700, background: RS.sunken),
@@ -227,6 +230,67 @@ class _TripScreenState extends State<TripScreen> {
     }).catchError((_) {}).whenComplete(() => _etaBusy = false);
   }
 
+  // The rider's own live location for the driver, until pickup (Uber/Ola style).
+  StreamSubscription<Position>? _share;
+  String? _shareFor;
+  bool _paused = false;
+  String _shareState = 'off'; // off | waiting | live | blocked | paused
+  ({DateTime at, LatLngPoint point})? _lastSent;
+
+  /// Rider shares while the driver is coming or waiting, or from 30 min before a confirmed ride.
+  static bool shouldShare(BookingDetail d, DateTime now) =>
+      d.isRider &&
+      (const ['driver_arriving', 'driver_arrived'].contains(d.booking.status) || (d.booking.status == 'confirmed' && d.ride.departAt.difference(now).inMinutes < 30));
+
+  void _syncSharing(BookingDetail d) {
+    if (!mounted) return;
+    final active = shouldShare(d, DateTime.now()) && !_paused;
+    if (!active) {
+      _stopShare();
+      final next = _paused && shouldShare(d, DateTime.now()) ? 'paused' : 'off';
+      if (next != _shareState) setState(() => _shareState = next);
+      return;
+    }
+    if (_shareFor != null || _shareState == 'blocked') return;
+    _startShare(d.booking.id);
+  }
+
+  Future<void> _startShare(String bookingId) async {
+    _shareFor = bookingId;
+    setState(() => _shareState = 'waiting');
+    final api = context.read<Session>().api;
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) throw 'off';
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw 'denied';
+      if (!mounted || _shareFor != bookingId || _share != null) return;
+      _share = Geolocator.getPositionStream(locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10)).listen((p) {
+        final here = LatLngPoint(p.latitude, p.longitude);
+        final last = _lastSent;
+        if (mounted && _shareState != 'live') setState(() => _shareState = 'live');
+        if (last == null || DateTime.now().difference(last.at).inSeconds >= 5 || haversineKm(last.point, here) * 1000 > 25) {
+          _lastSent = (at: DateTime.now(), point: here);
+          api.riderLocation(bookingId, p.latitude, p.longitude, p.accuracy).catchError((_) {});
+        }
+      }, onError: (_) => mounted ? setState(() => _shareState = 'waiting') : null);
+    } catch (_) {
+      if (mounted) setState(() => _shareState = 'blocked');
+    }
+  }
+
+  void _stopShare() {
+    _share?.cancel();
+    _share = null;
+    _shareFor = null;
+    _lastSent = null;
+  }
+
+  void _togglePause(BookingDetail d) {
+    setState(() => _paused = !_paused);
+    _syncSharing(d);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -238,6 +302,7 @@ class _TripScreenState extends State<TripScreen> {
   @override
   void dispose() {
     _loc?.cancel();
+    _stopShare();
     super.dispose();
   }
 
@@ -254,12 +319,17 @@ class _TripScreenState extends State<TripScreen> {
           final car = _car ?? d.ride.driverLocation;
           final from = car == null ? null : LatLngPoint(car.lat, car.lng);
           final to = switch (d.booking.status) { 'driver_arriving' => d.booking.pickup.point, 'in_progress' => d.booking.drop.point, _ => null };
-          WidgetsBinding.instance.addPostFrameCallback((_) => _refreshEta(from, to));
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _refreshEta(from, to);
+            _syncSharing(d);
+          });
           final e = _eta;
           final live = e != null && to != null && from != null && e.to.lat == to.lat && e.to.lng == to.lng ? e : null;
           return _TripView(
             detail: d,
             car: car,
+            share: _shareState,
+            onToggleShare: () => _togglePause(d),
             // Minus the distance already covered since the last check, so it keeps counting down.
             liveEta: live == null ? null : (minutes: math.max(1, live.eta.durationMin - (haversineKm(live.from, from!) * 1.2 / 22 * 60).round()), traffic: live.eta.traffic, delay: live.eta.trafficDelayMin, coords: live.eta.coords, segments: live.eta.segments),
           );
@@ -268,9 +338,13 @@ class _TripScreenState extends State<TripScreen> {
 }
 
 class _TripView extends StatelessWidget {
-  const _TripView({required this.detail, required this.car, this.liveEta});
+  const _TripView({required this.detail, required this.car, this.liveEta, this.share = 'off', this.onToggleShare});
   final BookingDetail detail;
   final DriverLocation? car;
+
+  /// Rider's own live location for the driver: off | waiting | live | blocked | paused.
+  final String share;
+  final VoidCallback? onToggleShare;
   final ({int minutes, String? traffic, int delay, List<LatLngPoint> coords, List<TrafficSegment> segments})? liveEta;
 
   static const _steps = ['pending', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'];
@@ -337,6 +411,18 @@ class _TripView extends StatelessWidget {
                   Text(eta != null ? (b.status == 'driver_arriving' ? 'Arriving in $eta min' : '$eta min to ${b.drop.name}') : (bookingStatusLabel[b.status] ?? b.status), style: RS.heading(22)),
                   const SizedBox(height: 4),
                   Text(_subtitle(b, ride, detail), style: const TextStyle(color: RS.ink500, height: 1.4)),
+                  if (detail.isRider && b.status == 'driver_arrived' && b.arrivedAt != null) ...[
+                    const SizedBox(height: 4),
+                    WaitedBuilder(
+                      since: b.arrivedAt!,
+                      builder: (_, waited) => Text(
+                        waited < freeWaitSeconds
+                            ? 'Waiting ${mmss(waited)} · please reach within ${mmss(freeWaitSeconds - waited)}'
+                            : '${detail.driver.firstName} has waited ${mmss(waited)} — hurry, or call so they don’t leave.',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: waited < freeWaitSeconds ? RS.warning : RS.danger),
+                      ),
+                    ),
+                  ],
                   if (traffic != null) ...[
                     const SizedBox(height: 4),
                     Text(
@@ -368,6 +454,7 @@ class _TripView extends StatelessWidget {
         ],
       ]),
       children: [
+        if (detail.isRider && share != 'off') ...[const SizedBox(height: 12), RiderLiveBar(state: share, driver: detail.driver.firstName, onToggle: onToggleShare)],
         if (live && carPoint == null && detail.isRider) ...[const SizedBox(height: 12), const Notice('Waiting for the driver’s location… it appears once their app shares GPS.')],
         if (detail.isRider && detail.ridePin != null) ...[const SizedBox(height: 14), FadeSlideIn(child: RidePinCard(pin: detail.ridePin!))],
         if (detail.isRider && const ['confirmed', 'driver_arriving', 'driver_arrived'].contains(b.status)) ...[
@@ -486,6 +573,37 @@ class _TripView extends StatelessWidget {
       ),
     );
     if (ok == true && context.mounted && await attempt(context, action) && context.mounted) await showMoment(context, Moment.cancelled, 'Booking cancelled', subtitle: 'The driver has been told. Online payments are refunded.');
+  }
+}
+
+/// "Sara can see where you are until pickup · Stop" — the rider's live location status.
+class RiderLiveBar extends StatelessWidget {
+  const RiderLiveBar({super.key, required this.state, required this.driver, this.onToggle});
+  final String state;
+  final String driver;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = state == 'live' || state == 'waiting';
+    final (fg, bg) = on ? (RS.success, RS.success50) : (RS.warning, RS.warning50);
+    final text = switch (state) {
+      'live' => '$driver can see where you are until pickup',
+      'waiting' => 'Finding your location…',
+      'paused' => 'Live location paused — $driver sees your pickup pin',
+      _ => 'Location is blocked. Allow it for RideSync in Settings so $driver can find you.',
+    };
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+      constraints: const BoxConstraints(minHeight: 48),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(RS.radiusMd)),
+      child: Row(children: [
+        Icon(on ? Icons.my_location : Icons.location_disabled_outlined, color: fg, size: 20),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.35))),
+        if (state != 'blocked' && onToggle != null) TextButton(onPressed: onToggle, child: Text(state == 'paused' ? 'Share' : 'Stop')),
+      ]),
+    );
   }
 }
 
