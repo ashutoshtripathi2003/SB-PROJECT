@@ -198,8 +198,10 @@ describe('full ride between two devices', () => {
     const ba = (await a.post('/api/bookings').set(H).send({ rideId, query })).body.id
     const bb = (await b.post('/api/bookings').set(H).send({ rideId, query })).body.id
     expect((await driver.post(`/api/bookings/${ba}/respond`).set(H).send({ accept: true })).status).toBe(200)
+    // The car is now full: the other request closes at once so that rider can pick another ride.
+    expect((await b.get(`/api/bookings/${bb}`)).body.booking.status).toBe('rejected')
+    expect((await b.get('/api/notifications')).body[0]).toMatchObject({ kind: 'rejected', title: expect.stringContaining('car is full') })
     expect((await driver.post(`/api/bookings/${bb}/respond`).set(H).send({ accept: true })).status).toBe(409)
-    expect((await driver.post(`/api/bookings/${bb}/respond`).set(H).send({ accept: false })).status).toBe(200)
     // Full ride no longer appears in search for a 3rd rider.
     const c = (await login('rider.three@vit.edu.in')).agent
     await c.patch('/api/me').set(H).send({ phone: '9876555555', studentId: 'VIT2213', onboarded: true })

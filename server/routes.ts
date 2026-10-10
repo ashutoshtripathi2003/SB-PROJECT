@@ -823,6 +823,12 @@ api.post(
         run(`UPDATE bookings SET status = 'accepted', updated_at = ? WHERE id = ?`, nowIso(), b.id)
         systemMessage(String(b.id), `${name} accepted the request.`)
         notify(String(b.rider_id), 'accepted', `${name} accepted your request`, `Choose how you’ll pay ${money(Number(b.fare))} to confirm your seat.`, `/trip/${b.id}`)
+        // Requests that no longer fit are closed now, so those riders can pick another ride instead of waiting.
+        const left = Number(r.seats_total) - seatsBooked(String(r.id))
+        for (const o of all(`SELECT * FROM bookings WHERE ride_id = ? AND status = 'pending' AND seats > ?`, r.id, left)) {
+          run(`UPDATE bookings SET status = 'rejected', updated_at = ? WHERE id = ?`, nowIso(), o.id)
+          notify(String(o.rider_id), 'rejected', `${name}’s car is full`, 'The last seats just went. You haven’t been charged. Pick another match.', `/trip/${o.id}`)
+        }
       } else {
         run(`UPDATE bookings SET status = 'rejected', updated_at = ? WHERE id = ?`, nowIso(), b.id)
         notify(String(b.rider_id), 'rejected', `${name} couldn’t take this request`, 'You haven’t been charged. Pick another match.', `/trip/${b.id}`)

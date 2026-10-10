@@ -49,7 +49,8 @@ export function addDemoData() {
   if (demoCount().users) return demoCount()
   const r = rng(42)
   const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)]
-  const now = Date.now()
+  // Anchored to noon IST today, so the same day always gives the same data whatever the time.
+  const now = Math.floor((Date.now() + 5.5 * 3600_000) / 86_400_000) * 86_400_000 + 6.5 * 3600_000
   const created = new Date(now - 60 * 86_400_000).toISOString()
   const users: { id: string; flaky: number }[] = []
   tx(() => {
@@ -70,7 +71,7 @@ export function addDemoData() {
         created,
       )
       // A hidden "flakiness" trait: some students cancel more — this is what the risk model must discover.
-      users.push({ id, flaky: r() < 0.25 ? 0.5 : r() < 0.4 ? 0.18 : 0.03 })
+      users.push({ id, flaky: r() < 0.3 ? 0.55 : 0.03 })
       if (i < 15)
         run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, `demo_v${i}`, id, pick(['Maruti', 'Hyundai', 'Honda', 'Tata']), pick(['Swift', 'i20', 'City', 'Nexon', 'Baleno']), pick(['White', 'Grey', 'Red', 'Blue']), `MH01DM${1000 + i}`, 3, pick(['petrol', 'petrol', 'cng', 'diesel', 'ev']))
     }
