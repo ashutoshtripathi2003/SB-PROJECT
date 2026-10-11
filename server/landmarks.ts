@@ -46,8 +46,11 @@ type OlaPrediction = {
 }
 
 /** Named venue within ~60 m, else the first meaningful part of the street address. */
+// Ola's nearby search refuses some keys (400); after the first refusal the address lookup below is used alone.
+let olaNearbyOff = false
+
 export async function olaReverse(lat: number, lng: number): Promise<PlaceName | null> {
-  try {
+  if (!olaNearbyOff) try {
     const near = await olaGet<{ predictions?: OlaPrediction[] }>(
       `https://api.olamaps.io/places/v1/nearbysearch?layers=venue&location=${lat},${lng}&radius=60&limit=5`,
     )
@@ -59,7 +62,11 @@ export async function olaReverse(lat: number, lng: number): Promise<PlaceName | 
       return { name, area: parts(best.structured_formatting?.secondary_text ?? best.description ?? '').filter((s) => s !== name).slice(0, 2).join(', ') }
     }
   } catch (e) {
-    console.error('[ridesync] Ola Maps nearby failed', (e as Error).message)
+    const msg = (e as Error).message
+    if (/\b400\b/.test(msg)) {
+      olaNearbyOff = true
+      console.log('[ridesync] Ola Maps nearby search not available for this key — using Ola address lookup and TomTom for pin names instead')
+    } else console.error('[ridesync] Ola Maps nearby failed', msg)
   }
   try {
     const r = await olaGet<{ results?: { name?: string; formatted_address?: string }[] }>(`https://api.olamaps.io/places/v1/reverse-geocode?latlng=${lat},${lng}`)

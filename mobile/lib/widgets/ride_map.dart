@@ -149,8 +149,6 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
   final Map<String, gm.BitmapDescriptor> _icons = {};
   // OpenStreetMap
   final _osm = fm.MapController();
-  int _tileErrors = 0;
-  bool _tilesFailed = false;
   bool _osmReady = false;
 
   MapPin? get _car => widget.pins.where((p) => p.kind == 'car').firstOrNull;
@@ -468,9 +466,8 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
     // server's keys): map services refuse keyless requests from apps ("API key required").
     final cfg = context.select<Session, (String, String?)>((s) => (s.api.mapTileUrl, s.config?.tileAttribution));
     final traffic = context.select<Session, String?>((s) => s.config?.traffic == true ? s.api.trafficTileUrl : null);
-    // Only for an older RideSync server without /api/tiles.
-    const carto = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png';
-    final tileUrl = _tilesFailed ? carto : cfg.$1;
+    // Never a keyless public map: those answer apps with "API key required" tiles.
+    final tileUrl = cfg.$1;
     final credit = (cfg.$2 ?? '© OpenStreetMap · CARTO').replaceAll(RegExp(r'<[^>]+>'), '');
     return fm.FlutterMap(
       mapController: _osm,
@@ -486,11 +483,6 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       children: [
         fm.TileLayer(
           urlTemplate: tileUrl,
-          // The server has no map tiles (older version) → CARTO instead of empty tiles.
-          errorTileCallback: (_, _, _) {
-            if (tileUrl != carto && ++_tileErrors == 4 && mounted) setState(() => _tilesFailed = true);
-          },
-          subdomains: const ['a', 'b', 'c', 'd'],
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
         ),
