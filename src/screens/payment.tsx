@@ -1,3 +1,4 @@
+import { isShareBooking, payNowAmount } from '@/lib/fare'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Banknote, CreditCard, Copy, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
 import QRCode from 'qrcode'
@@ -44,11 +45,11 @@ export function Payment() {
   const [error, setError] = useState<string | null>(null)
 
   const d = q.data
-  const link = d?.driverUpiId ? upiLink(d.driverUpiId, d.driver.name, d.booking.fare, `RideSync ${d.booking.pickup.name} to ${d.booking.drop.name}`) : null
+  const link = d?.driverUpiId ? upiLink(d.driverUpiId, d.driver.name, payNowAmount(d.booking, 'upi'), `RideSync ${d.booking.pickup.name} to ${d.booking.drop.name}`) : null
 
   useEffect(() => {
     // Wait for the server config so "Pay online" is the default when the gateway is set up.
-    if (d && config.data && method === null) setMethod((w.data?.balance ?? 0) >= d.booking.fare ? 'wallet' : rzpKey ? 'online' : d.driverUpiId ? 'upi' : 'cash')
+    if (d && config.data && method === null) setMethod((w.data?.balance ?? 0) >= payNowAmount(d.booking, 'wallet') ? 'wallet' : rzpKey ? 'online' : d.driverUpiId ? 'upi' : 'cash')
   }, [d, method, rzpKey, config.data, w.data])
   useEffect(() => {
     if (link && desktop) QRCode.toDataURL(link, { margin: 1, width: 240, color: { dark: '#15182E', light: '#FFFFFF' } }).then(setQr).catch(() => setQr(null))
@@ -97,7 +98,9 @@ export function Payment() {
   }
 
   const balance = w.data?.balance ?? 0
-  const shortfall = Math.max(0, booking.fare - balance)
+  const share = isShareBooking(booking) && !booking.fareFinal
+  const amount = payNowAmount(booking, method)
+  const shortfall = Math.max(0, payNowAmount(booking, 'wallet') - balance)
 
   /** Pays from the wallet; tops up just the missing amount through Razorpay first if needed. */
   async function payWithWallet() {
@@ -127,7 +130,8 @@ export function Payment() {
             <SuccessMark />
             <h1 className="t-h1">Seat confirmed</h1>
             <p className="t-body t-muted">
-              {done === 'wallet' ? `${money(booking.fare)} paid from your RideSync Wallet. ${name} has been notified.` : done === 'online' ? `${money(booking.fare)} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} ${money(booking.fare)} in cash at pickup.`}
+              {done === 'wallet' ? `${money(payNowAmount(booking, 'wallet'))} paid from your RideSync Wallet. ${name} has been notified.` : done === 'online' ? `${money(payNowAmount(booking, 'online'))} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} your final share in cash at pickup.`}
+              {share && (done === 'wallet' || done === 'online') && ' Anything above your final share comes back to you when the trip starts.'}
             </p>
           </div>
           <div className="stack gap-2" style={{ marginTop: 16 }}>
@@ -157,17 +161,32 @@ export function Payment() {
             </span>
             <div className="bill" style={{ marginTop: 12 }}>
               <div className="bill__row">
-                <span>Cost share</span>
+                <span>{share ? 'Your equal share now' : 'Cost share'}</span>
                 <span>{money(booking.fare)}</span>
               </div>
+              {share && (
+                <div className="bill__row">
+                  <span>Never more than</span>
+                  <span>{money(booking.fareMax!)}</span>
+                </div>
+              )}
               <div className="bill__row">
                 <span>Platform fee</span>
                 <span className="t-success">Free</span>
               </div>
               <div className="bill__row bill__row--total">
-                <span>Total</span>
-                <span>{money(booking.fare)}</span>
+                <span>{share ? 'Pay now' : 'Total'}</span>
+                <span>{money(amount)}</span>
               </div>
+              {share && (
+                <p className="t-sm t-muted" style={{ marginTop: 6 }}>
+                  {method === 'wallet' || method === 'online'
+                    ? `Paying online holds the maximum. Your share drops if more riders join and is fixed with the live traffic when ${name} starts the trip; the difference comes straight back to you.`
+                    : method === 'upi'
+                      ? `You pay your share now. It’s fixed when ${name} starts the trip; if it drops, ${name} returns the difference (it never goes above ${money(booking.fareMax!)}).`
+                      : `You pay your final share in cash, fixed when ${name} starts the trip (never above ${money(booking.fareMax!)}).`}
+                </p>
+              )}
             </div>
           </div>
 
@@ -209,12 +228,12 @@ export function Payment() {
                   <div className="stack gap-4" style={{ padding: '12px 2px 8px' }}>
                     {desktop ? (
                       <div className="upi-qr">
-                        {qr ? <img src={qr} alt={`UPI QR code to pay ${money(booking.fare)} to ${driver.name}`} width={200} height={200} /> : <div className="skel" style={{ width: 200, height: 200 }} />}
+                        {qr ? <img src={qr} alt={`UPI QR code to pay ${money(amount)} to ${driver.name}`} width={200} height={200} /> : <div className="skel" style={{ width: 200, height: 200 }} />}
                         <span className="t-sm t-muted t-center">Scan with any UPI app on your phone</span>
                       </div>
                     ) : (
                       <div className="stack gap-2">
-                        <span className="t-caption t-muted">Pay {money(booking.fare)} with</span>
+                        <span className="t-caption t-muted">Pay {money(amount)} with</span>
                         {/* Each app's own UPI link, with the amount and driver filled in. */}
                         <div className="upi-apps">
                           {[
@@ -264,15 +283,15 @@ export function Payment() {
       <div className="page__footer page__footer--narrow">
         {method === 'wallet' ? (
           <Button size="lg" block icon={<WalletIcon />} loading={saving} disabled={shortfall > 0 && !rzpKey} onClick={payWithWallet}>
-            {shortfall > 0 ? `Add ${money(Math.max(10, Math.ceil(shortfall)))} & pay` : `Pay ${money(booking.fare)} from wallet`}
+            {shortfall > 0 ? `Add ${money(Math.max(10, Math.ceil(shortfall)))} & pay` : `Pay ${money(amount)} from wallet`}
           </Button>
         ) : method === 'online' ? (
           <Button size="lg" block icon={<Lock />} loading={saving} onClick={payWithGateway}>
-            Pay {money(booking.fare)}
+            Pay {money(amount)}
           </Button>
         ) : method === 'upi' ? (
           <Button size="lg" block loading={saving} onClick={() => confirm('upi')}>
-            {opened || desktop ? `I’ve paid ${money(booking.fare)}` : `I’ve paid ${money(booking.fare)} by UPI`}
+            {opened || desktop ? `I’ve paid ${money(amount)}` : `I’ve paid ${money(amount)} by UPI`}
           </Button>
         ) : (
           <Button size="lg" block loading={saving} onClick={() => confirm('cash')}>

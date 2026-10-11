@@ -291,12 +291,22 @@ export function RideDetails() {
           <div className="bill">
             <div className="bill__row">
               <span>
-                {money(fare)} / seat × {plural(query.seats, 'seat')}
+                {ride.fareMode === 'share' ? 'Your equal share' : `${money(fare)} / seat`} × {plural(query.seats, 'seat')}
               </span>
               <span>{money(total)}</span>
             </div>
+            {ride.fareMode === 'share' && match?.fareMax != null && (
+              <div className="bill__row">
+                <span>Never more than</span>
+                <span>{money(match.fareMax * query.seats)}</span>
+              </div>
+            )}
             <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
-              <span>You pay for the part of the route you share. Paid after {firstName(driver.name)} accepts.</span>
+              <span>
+                {ride.fareMode === 'share'
+                  ? `The trip costs about ${money(ride.costTotal ?? 0)} in fuel and wear${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. Your share drops as more riders join and is fixed with the live traffic when the trip starts. Paid after ${firstName(driver.name)} accepts.`
+                  : `You pay for the part of the route you share. Paid after ${firstName(driver.name)} accepts.`}
+              </span>
             </div>
           </div>
         </section>

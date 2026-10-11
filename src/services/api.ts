@@ -371,6 +371,8 @@ export const admin = {
   train: () => mutate(post('/admin/ml/train')),
   addDemo: () => mutate(post<{ added: DemoCount; demo: DemoCount }>('/admin/demo')),
   removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
+  fuelPrices: () => request<{ prices: FuelPrices }>('GET', '/admin/fuel-prices'),
+  setFuelPrices: (p: Partial<FuelPrices>) => request<{ prices: FuelPrices }>('PUT', '/admin/fuel-prices', p),
 }
 
 export type AssistantAction =
@@ -483,12 +485,38 @@ export type OfferInput = {
   destination: Place
   departAt: string
   seats: number
-  farePerSeat: number
+  /** Ignored by the server since fair fares (riders pay an equal share of the trip cost). */
+  farePerSeat?: number
   maxDetourKm: number
   preferences: RidePreference[]
   note?: string
   womenOnly?: boolean
 }
+
+export type FuelPrices = Record<Vehicle['fuel'], number>
+export type TripCost = {
+  total: number
+  fuel: Vehicle['fuel']
+  unit: string
+  km: { smooth: number; city: number; traffic: number }
+  mileage: { smooth: number; city: number; traffic: number }
+  fuelUsed: number
+  fuelPrice: number
+  fuelCost: number
+  wear: number
+  summary: string
+}
+export type CostPreview = {
+  cost: TripCost
+  shares: { riders: number; each: number }[]
+  perPersonIfFull: number
+  distanceKm: number
+  durationMin: number
+  trafficDelayMin: number
+  ownMileage: boolean
+}
+/** The trip's cost with the driver's car and the traffic forecast for that time, and what each person pays. */
+export const costPreview = (o: { origin: Place; destination: Place; departAt: string; seats: number }) => post<CostPreview>('/rides/cost-preview', o)
 
 async function mutate<T>(p: Promise<T>) {
   const r = await p

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, Navigation, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
+import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, Navigation, MapPinOff, MessageCircle, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MatchScore } from '@/components/MatchScore'
@@ -19,10 +19,10 @@ import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
 import { haversineKm } from '@/lib/geo'
-import { PREFERENCE_LABEL, suggestFarePerSeat, tierFor } from '@/lib/matching'
+import { PREFERENCE_LABEL, tierFor } from '@/lib/matching'
 import type { Booking, DriverLocation, RidePreference, RiderInfo, RiderLocation } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
-import { ApiError, Q, bookings, rides, routePreview, saveVehicle, useMe, useQuery, useRiderLocations, type RideDetail, type RouteInfo } from '@/services/api'
+import { ApiError, Q, bookings, costPreview, rides, routePreview, saveVehicle, useMe, useQuery, useRiderLocations, type CostPreview, type RideDetail, type RouteInfo } from '@/services/api'
 import { defaultQuery } from '@/state/search'
 import { PREF_OPTIONS } from './find'
 import { shareLink } from './rideDetails'
@@ -53,7 +53,7 @@ export function OfferRide() {
   const [womenOnly, setWomenOnly] = useState(false)
   const [note, setNote] = useState('')
   const [route, setRoute] = useState<RouteInfo | null>(null)
-  const [fare, setFare] = useState<number | null>(null)
+  const [cost, setCost] = useState<CostPreview | null>(null)
   const [errors, setErrors] = useState<ReturnType<typeof validateTrip> & { form?: string | null }>({})
   const [publishing, setPublishing] = useState(false)
   const [vehicleOpen, setVehicleOpen] = useState(false)
@@ -70,10 +70,21 @@ export function OfferRide() {
     }
   }, [draft.pickup, draft.drop])
 
-  const suggested = route ? suggestFarePerSeat(route.distanceKm, draft.seats, u.vehicle?.fuel) : null
-  const maxFare = suggested ? Math.round((suggested * 1.5) / 10) * 10 : 0
-  const effectiveFare = fare ?? suggested ?? 0
-  useEffect(() => setFare(null), [suggested])
+  // Fair fares: the trip's real cost with this car and the traffic forecast for the chosen time.
+  const vehicleKey = JSON.stringify(u.vehicle ?? null)
+  useEffect(() => {
+    setCost(null)
+    if (!u.vehicle || !draft.pickup || !draft.drop || draft.pickup.id === draft.drop.id) return
+    const at = new Date(`${draft.date}T${draft.time}:00`)
+    if (Number.isNaN(at.getTime())) return
+    let alive = true
+    costPreview({ origin: draft.pickup, destination: draft.drop, departAt: at.toISOString(), seats: draft.seats })
+      .then((c) => alive && setCost(c))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [draft.pickup, draft.drop, draft.date, draft.time, draft.seats, vehicleKey])
 
   if (u.commute === 'rider' && !u.vehicle) {
     return (
@@ -105,7 +116,6 @@ export function OfferRide() {
         destination: draft.drop!,
         departAt: new Date(`${draft.date}T${draft.time}:00`).toISOString(),
         seats: draft.seats,
-        farePerSeat: effectiveFare,
         maxDetourKm: Number(detour),
         preferences: prefs,
         note: note.trim() || undefined,
@@ -158,6 +168,52 @@ export function OfferRide() {
             {route.source === 'estimate' && ' (estimated)'}
           </p>
         )}
+
+        <section className="stack gap-3">
+          <div className="stack gap-1">
+            <h2 className="section__title" style={{ padding: 0 }}>
+              Trip cost, shared equally
+            </h2>
+            <span className="t-sm t-muted">You don’t set a price. Everyone in the car, you included, pays an equal share of what the trip really costs.</span>
+          </div>
+          {cost ? (
+            <div className="fare-box">
+              <div className="row row--between">
+                <span className="stack">
+                  <span className="t-sm t-muted">This trip costs about</span>
+                  <span className="t-display tabular">{money(cost.cost.total)}</span>
+                </span>
+                <span className="stack" style={{ alignItems: 'flex-end' }}>
+                  <span className="t-sm t-muted">{cost.cost.fuelUsed} {cost.cost.unit} × {money(cost.cost.fuelPrice)}</span>
+                  <span className="t-sm t-muted">+ {money(cost.cost.wear)} tyres &amp; servicing</span>
+                </span>
+              </div>
+              <div className="cost-shares" aria-label="What each rider pays">
+                {cost.shares.map((s) => (
+                  <span key={s.riders} className="cost-shares__item">
+                    <span className="t-body t-strong tabular">{money(s.each)}</span>
+                    <span className="t-caption t-muted">each with {plural(s.riders, 'rider')}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="cost-working">
+                {cost.cost.summary}. The cost is fixed with the live traffic when you start the trip, so a jam on the day is covered.
+                {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
+              </p>
+              {!cost.ownMileage && (
+                <p className="t-sm" style={{ marginTop: 8 }}>
+                  Using typical mileage for a {u.vehicle?.fuel === 'ev' ? 'electric' : u.vehicle?.fuel} car.{' '}
+                  <button type="button" className="t-strong t-primary" onClick={() => setVehicleOpen(true)}>
+                    Add your car’s mileage
+                  </button>{' '}
+                  for an exact cost.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="t-sm t-muted">{u.vehicle ? 'Choose your destination and time to see the trip cost.' : 'Add your car to see the trip cost.'}</p>
+          )}
+        </section>
 
         <section className="stack gap-3">
           <h2 className="section__title" style={{ padding: 0 }}>
@@ -232,33 +288,6 @@ export function OfferRide() {
           )}
         </section>
 
-        <section className="stack gap-3">
-          <h2 className="section__title" style={{ padding: 0 }}>
-            Cost per seat
-          </h2>
-          {suggested !== null && route ? (
-            <div className="fare-box">
-              <div className="row row--between">
-                <IconButton label="Lower cost per seat" className="fare-box__btn" disabled={effectiveFare <= 0} onClick={() => setFare(Math.max(0, effectiveFare - 10))}>
-                  <Minus />
-                </IconButton>
-                <div className="stack" style={{ alignItems: 'center' }}>
-                  <span className="t-display tabular">{effectiveFare === 0 ? 'Free' : money(effectiveFare)}</span>
-                  <span className="t-sm t-muted">per seat</span>
-                </div>
-                <IconButton label="Raise cost per seat" className="fare-box__btn" disabled={effectiveFare >= maxFare} onClick={() => setFare(Math.min(maxFare, effectiveFare + 10))}>
-                  <Plus />
-                </IconButton>
-              </div>
-              <p className="t-sm t-muted t-center" style={{ marginTop: 12 }}>
-                {effectiveFare === suggested ? 'Suggested' : `Suggested ${money(suggested)}`} — fuel, tolls and wear for {Math.round(route.distanceKm)} km split across {plural(draft.seats + 1, 'person', 'people')}. RideSync is for cost-sharing, so the maximum is {money(maxFare)}.
-              </p>
-            </div>
-          ) : (
-            <p className="t-sm t-muted">Choose your destination to see a suggested cost-share.</p>
-          )}
-        </section>
-
         <section className="field">
           <label className="field__label" htmlFor="ride-note">
             Note for riders (optional)
@@ -275,9 +304,11 @@ export function OfferRide() {
 
 function VehicleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const toast = useToast()
+  const { user } = useMe()
   return (
-    <ModalSheet open={open} onClose={onClose} title="Add your car">
+    <ModalSheet open={open} onClose={onClose} title={user?.vehicle ? 'Your car' : 'Add your car'}>
       <VehicleForm
+        initial={user?.vehicle}
         submitLabel="Save car"
         onSubmit={async (v) => {
           await saveVehicle(v)
@@ -503,8 +534,8 @@ export function DriverRide() {
               </span>
             </div>
             <div className="fact">
-              <span className="fact__label">Per seat</span>
-              <span className="fact__value">{ride.farePerSeat ? money(ride.farePerSeat) : 'Free'}</span>
+              <span className="fact__label">{ride.fareMode === 'share' ? 'Trip cost' : 'Per seat'}</span>
+              <span className="fact__value" title={ride.costSummary}>{ride.fareMode === 'share' ? money(ride.costTotal ?? 0) : ride.farePerSeat ? money(ride.farePerSeat) : 'Free'}</span>
             </div>
             <div className="fact">
               <span className="fact__label">{ride.status === 'completed' ? 'Cost share' : 'To collect'}</span>
@@ -512,6 +543,14 @@ export function DriverRide() {
             </div>
           </div>
         </div>
+
+        {ride.fareMode === 'share' && ride.costTotal != null && (
+          <p className="t-sm t-muted" style={{ marginTop: -8 }}>
+            {ride.costSummary}. Split equally by the km each person rides, you included
+            {riders.length > 0 && ` — your own share is about ${money(Math.max(0, ride.costTotal - riders.reduce((s, b) => s + b.fare, 0)))}`}.
+            {ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}
+          </p>
+        )}
 
         {live && (
           <Notice tone={locError ? 'warning' : 'success'} icon={locError ? <MapPinOff /> : <LocateFixed />} title={locError ? 'Location not shared' : 'Sharing live location'}>
@@ -687,6 +726,7 @@ function RiderRow({ b, liveAt, live, done, busy, onStep, onChat, onRemove }: { b
       <div className="row row--between t-sm">
         <span className="t-muted">
           {money(b.fare)} · {paymentLabel(b)}
+          {!!b.settleDue && <span style={{ color: 'var(--warning-600)' }}>{b.settleDue < 0 ? ` · return ${money(-b.settleDue)}` : ` · ${money(b.settleDue)} more to collect`}</span>}
         </span>
         {(b.paymentStatus === 'unpaid' || b.paymentStatus === 'marked_paid') && b.status !== 'accepted' && (
           <button className="t-strong t-primary" disabled={busy} onClick={() => onStep(() => bookings.paymentReceived(b.id), `Marked ${money(b.fare)} as received`)}>

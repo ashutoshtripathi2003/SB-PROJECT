@@ -5,7 +5,7 @@ import { Logo } from '@/components/Logo'
 import { NetworkError, StateView } from '@/components/States'
 import { Badge, Button, Chip, RideCardSkeleton, cx } from '@/components/ui'
 import { dayTime, money, relative } from '@/lib/format'
-import { Q, auth, useMe, useQuery, type IdCardReview } from '@/services/api'
+import { Q, admin, auth, useMe, useQuery, type FuelPrices as Prices, type IdCardReview } from '@/services/api'
 import { AiTab } from './adminAi'
 import { Review } from './adminVerify'
 
@@ -188,6 +188,7 @@ function Overview({ q }: { q: ReturnType<typeof useQuery<Stats>> }) {
           <Row label="Refunds" value={s.money.refunds} />
           <Row label="CO₂ saved" value={`${s.money.co2Kg} kg`} />
         </Group>
+        <FuelPrices />
         <Group title="Trip-time accuracy">
           {!s.eta?.trips ? (
             <p className="t-sm t-muted">Shows how close RideSync’s trip times were to the real pickup→drop time, once trips are completed. RideSync uses these trips to correct TomTom, Ola and Mappls automatically.</p>
@@ -203,6 +204,63 @@ function Overview({ q }: { q: ReturnType<typeof useQuery<Stats>> }) {
         </Group>
       </div>
     </div>
+  )
+}
+
+const FUELS: { key: keyof Prices; label: string; unit: string }[] = [
+  { key: 'petrol', label: 'Petrol', unit: '₹ / litre' },
+  { key: 'diesel', label: 'Diesel', unit: '₹ / litre' },
+  { key: 'cng', label: 'CNG', unit: '₹ / kg' },
+  { key: 'ev', label: 'Electric', unit: '₹ / unit (kWh)' },
+]
+
+/** Today's fuel prices in Mumbai, used to work out every new trip's cost (fair fares). */
+function FuelPrices() {
+  const [prices, setPrices] = useState<Record<string, string> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => {
+    admin
+      .fuelPrices()
+      .then((r) => setPrices(Object.fromEntries(Object.entries(r.prices).map(([k, v]) => [k, String(v)]))))
+      .catch(() => setMsg('Couldn’t load fuel prices.'))
+  }, [])
+  async function save() {
+    if (!prices) return
+    const body = Object.fromEntries(Object.entries(prices).map(([k, v]) => [k, Number(v)]))
+    if (Object.values(body).some((n) => !(n >= 1 && n <= 500))) return setMsg('Each price must be between ₹1 and ₹500.')
+    setSaving(true)
+    setMsg(null)
+    try {
+      await admin.setFuelPrices(body)
+      setMsg('Saved. New trips use these prices.')
+    } catch {
+      setMsg('Couldn’t save. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <section className="admin-group">
+      <h2 className="t-h3">Fuel prices</h2>
+      <p className="t-sm t-muted">Trip costs (and so every fare) use these. Update them when pump prices change.</p>
+      {prices ? (
+        <div className="stack gap-2" style={{ marginTop: 8 }}>
+          {FUELS.map((f) => (
+            <label key={f.key} className="row row--between gap-2">
+              <span className="t-sm">
+                {f.label} <span className="t-muted">{f.unit}</span>
+              </span>
+              <input className="input" style={{ width: 96, textAlign: 'right' }} inputMode="decimal" value={prices[f.key]} onChange={(e) => setPrices({ ...prices, [f.key]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })} aria-label={`${f.label} price`} />
+            </label>
+          ))}
+          <Button size="sm" loading={saving} onClick={save}>
+            Save prices
+          </Button>
+        </div>
+      ) : null}
+      {msg && <p className="t-sm t-muted" style={{ marginTop: 6 }}>{msg}</p>}
+    </section>
   )
 }
 
