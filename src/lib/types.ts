@@ -26,6 +26,8 @@ export type Vehicle = {
   plate: string
   seats: number // passenger seats excluding driver
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
+  /** The driver's own mileage per condition (km per L / kg / kWh); blanks use typical values. */
+  mileage?: { smooth?: number; city?: number; traffic?: number }
 }
 
 /** What other students can see about you. */
@@ -95,6 +97,11 @@ export type Ride = {
   driverLocation?: DriverLocation
   /** Only female students can see and book it. */
   womenOnly?: boolean
+  /** 'share': the trip's real cost split equally among everyone in the car (fair fares); 'fixed': older rides. */
+  fareMode?: 'fixed' | 'share'
+  /** Estimated cost of the whole trip (fuel + wear), and how it was worked out. */
+  costTotal?: number
+  costSummary?: string
 }
 
 export type BookingStatus =
@@ -120,7 +127,15 @@ export type Booking = {
   pickup: Place
   drop: Place
   seats: number
-  fare: number // total for all seats
+  fare: number // total for all seats: the current share (final once the trip starts)
+  /** Fair fares: the most this booking can cost; `fare` falls below it as more riders join. */
+  fareMax?: number
+  /** True once the driver started the trip and the share is fixed. */
+  fareFinal?: boolean
+  /** What the rider has paid so far (wallet, online or UPI). */
+  paidAmount?: number
+  /** After the fare was fixed: > 0 the rider still owes this, < 0 the driver returns it (UPI). */
+  settleDue?: number
   status: BookingStatus
   matchScore: number
   createdAt: string
@@ -190,7 +205,11 @@ export type MatchResult = {
   dropDistanceKm: number
   timeDiffMin: number
   detourKm: number
-  fare: number // per seat for this rider
+  fare: number // per seat for this rider (fair fares: their share right now)
+  /** Fair fares: the most it can cost per seat (if no one else joins). */
+  fareMax?: number
+  /** Part of the driver's route this rider travels (0–1). */
+  shareFraction?: number
   reasons: string[]
   caveats: string[]
   history?: string

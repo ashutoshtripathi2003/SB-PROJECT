@@ -83,10 +83,12 @@ describe('full ride between two devices', () => {
     const offer = { origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 60, maxDetourKm: 3, preferences: ['no_smoking'] }
     expect((await driver.post('/api/rides').set(H).send(offer)).status).toBe(400)
     expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Honda', model: 'City', color: 'White', plate: 'MH01AB1234', seats: 3, fuel: 'petrol' })).status).toBe(200)
-    // Cost-sharing cap.
-    expect((await driver.post('/api/rides').set(H).send({ ...offer, farePerSeat: 2000 })).status).toBe(400)
-    const pub = await driver.post('/api/rides').set(H).send(offer)
+    // Fair fares: the driver doesn't set a price (an old app's farePerSeat is ignored); the trip's cost is split.
+    const pub = await driver.post('/api/rides').set(H).send({ ...offer, farePerSeat: 2000 })
     expect(pub.status).toBe(200)
+    expect(pub.body).toMatchObject({ fareMode: 'share' })
+    expect(pub.body.costTotal).toBeGreaterThan(0)
+    expect(pub.body.farePerSeat).toBeLessThan(2000)
     const rideId = pub.body.id
 
     // Rider on another device sees it.
@@ -97,6 +99,9 @@ describe('full ride between two devices', () => {
     expect(search.body.results).toHaveLength(1)
     expect(search.body.results[0].score).toBeGreaterThan(80)
     expect(search.body.results[0].driver.gender).toBeUndefined()
+    // Alone with the driver, the rider's share is half the cost (rounded to ₹5); the maximum adds traffic head-room.
+    expect(Math.abs(search.body.results[0].fare - pub.body.costTotal / 2)).toBeLessThanOrEqual(5)
+    expect(search.body.results[0].fareMax).toBeGreaterThanOrEqual(search.body.results[0].fare)
     const feed = await rider.get('/api/rides/feed')
     expect(feed.body.map((x: { ride: { id: string } }) => x.ride.id)).toContain(rideId)
     // Driver doesn't see their own ride.
@@ -144,8 +149,11 @@ describe('full ride between two devices', () => {
     expect(unreadAfter.map((n: { title: string }) => n.title)).toEqual(['Welcome to RideSync'])
     expect(msgs.body.filter((m: { system: boolean }) => !m.system).map((m: { text: string }) => m.text)).toEqual(['Hi!', 'See you at 5'])
 
-    // Live ride.
+    // Live ride. Starting fixes the share (never above the maximum).
     expect((await driver.post(`/api/rides/${rideId}/start`).set(H).send({})).status).toBe(200)
+    const fixed = (await rider.get(`/api/bookings/${bookingId}`)).body.booking
+    expect(fixed.fareFinal).toBe(true)
+    expect(fixed.fare).toBeLessThanOrEqual(fixed.fareMax)
     expect((await driver.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.03, lng: 72.87, heading: 10 })).status).toBe(200)
     const live = await rider.get(`/api/bookings/${bookingId}`)
     expect(live.body.booking.status).toBe('driver_arriving')
@@ -184,9 +192,9 @@ describe('full ride between two devices', () => {
     expect(meDriver.body.ridesOffered).toBe(1)
     expect(meDriver.body.rating).toBe(5)
     const pays = await rider.get('/api/payments')
-    expect(pays.body[0]).toMatchObject({ direction: 'paid', amount: 60, method: 'upi', status: 'received' })
+    expect(pays.body[0]).toMatchObject({ direction: 'paid', amount: fixed.fare, method: 'upi', status: 'received' })
     const trips = await driver.get('/api/trips')
-    expect(trips.body.rides[0]).toMatchObject({ status: 'completed', earned: 60 })
+    expect(trips.body.rides[0]).toMatchObject({ status: 'completed', earned: fixed.fare })
   })
 
   it('prevents overbooking and handles declines and cancellations', async () => {
