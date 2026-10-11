@@ -8,8 +8,8 @@ import { db, one, run } from './db'
  *   each share = trip cost × (that person's km × seats) ÷ (everyone's km × seats, the driver included)
  *
  * The driver never pays more than an equal share, and nobody profits. A rider sees their share now
- * (it falls as more riders join) and a guaranteed maximum; the share becomes final when the driver
- * starts the trip, priced with the live traffic at that moment and never above the maximum.
+ * (it falls as more riders join) and a guaranteed maximum; the share becomes final at their drop-off,
+ * priced from the driver's GPS track of the actual trip (trackCost) and never above the maximum.
  */
 
 export type Fuel = Vehicle['fuel']
@@ -31,7 +31,7 @@ export const WEAR_PER_KM: Record<Fuel, number> = { petrol: 3, diesel: 3.5, cng: 
 export const DEFAULT_FUEL_PRICES: Record<Fuel, number> = { petrol: 104, diesel: 90, cng: 77, ev: 10 }
 export const FUEL_UNIT: Record<Fuel, string> = { petrol: 'L', diesel: 'L', cng: 'kg', ev: 'kWh' }
 
-/** Head-room on the maximum, so worse traffic at the start than forecast stays within it. */
+/** Head-room on the maximum, so worse traffic on the day than forecast stays within it. */
 export const MAX_BUFFER = 1.15
 export const MIN_FARE = 30
 
@@ -99,10 +99,11 @@ export function conditionKm(route: RouteLike) {
   return { smooth: rest * smoothShare, city: rest * (1 - smoothShare), traffic }
 }
 
-export function tripCost(fuel: Fuel, own: Partial<Mileage>, route: RouteLike, prices = fuelPrices()): TripCost {
+export function tripCost(fuel: Fuel, own: Partial<Mileage>, route: RouteLike, prices = fuelPrices(), factor = 1): TripCost {
   const mileage = mileageFor(fuel, own)
   const km = conditionKm(route)
-  const fuelUsed = km.smooth / mileage.smooth + km.city / mileage.city + km.traffic / mileage.traffic
+  // factor: learnt from the car's trip computer on earlier trips (1 = as the mileage says).
+  const fuelUsed = factor * (km.smooth / mileage.smooth + km.city / mileage.city + km.traffic / mileage.traffic)
   const fuelPrice = prices[fuel]
   const fuelCost = fuelUsed * fuelPrice
   const wear = route.distanceKm * WEAR_PER_KM[fuel]
@@ -163,4 +164,165 @@ export const perPersonIfFull = (cost: number, seats: number) => Math.max(MIN_FAR
 /** Driver's preview: what each rider pays with 1, 2, … riders going the whole way. */
 export function shareTable(cost: number, seats: number) {
   return Array.from({ length: seats }, (_, i) => ({ riders: i + 1, each: Math.max(MIN_FARE, round5(cost / (i + 2))) }))
+}
+
+/* ---- The actual trip: cost from the driver's GPS track ------------------------------------- */
+
+/**
+ * Fuel burnt standing still with the engine on (signals, jams), per hour: diesel ~0.7 L, petrol ~0.8 L,
+ * CNG ~0.8 kg, electric ~0.6 kWh (mostly the AC).
+ */
+export const IDLE_PER_HOUR: Record<Fuel, number> = { petrol: 0.8, diesel: 0.7, cng: 0.8, ev: 0.6 }
+
+/** Speeds (km/h) at which the car's three mileage figures apply; in between, the mileage slides smoothly. */
+const V_TRAFFIC = 10
+const V_CITY = 30
+const V_SMOOTH = 60
+
+/** The car's mileage at an average speed: heavy-traffic figure at 10 km/h or less, city at 30, open-road at 60+. */
+export function mileageAt(kmh: number, m: Mileage): number {
+  if (kmh <= V_TRAFFIC) return m.traffic
+  if (kmh <= V_CITY) return m.traffic + ((m.city - m.traffic) * (kmh - V_TRAFFIC)) / (V_CITY - V_TRAFFIC)
+  if (kmh < V_SMOOTH) return m.city + ((m.smooth - m.city) * (kmh - V_CITY)) / (V_SMOOTH - V_CITY)
+  return m.smooth
+}
+
+export type TrackPoint = { lat: number; lng: number; at: number /* ms */ }
+export type Chunk = { t0: number; t1: number; km: number }
+
+const R_KM = 6371
+function distKm(a: TrackPoint, b: TrackPoint) {
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R_KM * Math.asin(Math.sqrt(h))
+}
+
+/**
+ * Turns GPS points into chunks of about a minute each (km driven, time taken), so the average speed of
+ * every chunk is reliable. The phone sends a point every few seconds while moving and nothing while the
+ * car stands still, so a long gap with little distance is time stuck in traffic. A gap of more than a
+ * minute with real distance (the phone slept) is counted along the roads (×1.25 the straight line).
+ * Jumps faster than 150 km/h are GPS glitches and are skipped.
+ */
+export function trackChunks(points: TrackPoint[], chunkMs = 60_000): Chunk[] {
+  const pts = [...points].sort((a, b) => a.at - b.at)
+  const out: Chunk[] = []
+  let cur: Chunk | null = null
+  let prev: TrackPoint | null = null
+  for (const p of pts) {
+    if (!prev) {
+      prev = p
+      cur = { t0: p.at, t1: p.at, km: 0 }
+      continue
+    }
+    const dt = p.at - prev.at
+    if (dt <= 0) continue
+    let d = distKm(prev, p)
+    if (d / (dt / 3_600_000) > 150) continue
+    if (dt > 60_000 && d > 0.3) d *= 1.25
+    cur!.km += d
+    cur!.t1 = p.at
+    prev = p
+    if (cur!.t1 - cur!.t0 >= chunkMs) {
+      out.push(cur!)
+      cur = { t0: p.at, t1: p.at, km: 0 }
+    }
+  }
+  if (cur && cur.t1 > cur.t0) out.push(cur)
+  return out
+}
+
+/** Fuel a chunk burns: by its average speed and the car's mileage, never less than idling for that time. */
+export function chunkFuel(c: Chunk, fuel: Fuel, m: Mileage, factor = 1) {
+  const hours = (c.t1 - c.t0) / 3_600_000
+  const kmh = hours > 0 ? c.km / hours : 0
+  return factor * Math.max(c.km / mileageAt(kmh, m), IDLE_PER_HOUR[fuel] * hours)
+}
+
+export type Aboard = { id: string; seats: number; from: number; to: number; max?: number }
+
+export type TrackCost = {
+  total: number
+  km: number
+  fuelUsed: number
+  fuelCost: number
+  wear: number
+  unit: string
+  fuelPrice: number
+  minutes: number
+  stuckMinutes: number
+  /** Each rider's fare (rounded, minimum, capped) and the km they rode. */
+  riders: Map<string, { fare: number; exact: number; km: number; coverage: number }>
+  driverShare: number
+  summary: string
+}
+
+/**
+ * The trip's real cost from the GPS track, and an exactly equal split: every minute of driving is paid
+ * for by the people in the car during that minute (each rider by seats, the driver as one). A stretch the
+ * driver drives alone (to a pickup, after the last drop) is the driver's own trip.
+ */
+export function trackCost(chunks: Chunk[], fuel: Fuel, own: Partial<Mileage>, aboard: Aboard[], opts: { factor?: number; prices?: Record<Fuel, number> } = {}): TrackCost {
+  const m = mileageFor(fuel, own)
+  const prices = opts.prices ?? fuelPrices()
+  const factor = opts.factor ?? 1
+  const price = prices[fuel]
+  const exact = new Map<string, number>(aboard.map((a) => [a.id, 0]))
+  const kmIn = new Map<string, number>(aboard.map((a) => [a.id, 0]))
+  const msIn = new Map<string, number>(aboard.map((a) => [a.id, 0]))
+  let fuelUsed = 0
+  let km = 0
+  let stuckMs = 0
+  let driverShare = 0
+  for (const c of chunks) {
+    const f = chunkFuel(c, fuel, m, factor)
+    const cost = f * price + c.km * WEAR_PER_KM[fuel]
+    fuelUsed += f
+    km += c.km
+    const hours = (c.t1 - c.t0) / 3_600_000
+    if (hours > 0 && c.km / hours < V_TRAFFIC) stuckMs += c.t1 - c.t0
+    // Who was in the car for this minute (by the middle of it).
+    const mid = (c.t0 + c.t1) / 2
+    const inCar = aboard.filter((a) => a.from <= mid && mid < a.to)
+    const heads = 1 + inCar.reduce((s, a) => s + a.seats, 0)
+    driverShare += cost / heads
+    for (const a of inCar) {
+      exact.set(a.id, exact.get(a.id)! + (cost * a.seats) / heads)
+      kmIn.set(a.id, kmIn.get(a.id)! + c.km)
+      msIn.set(a.id, msIn.get(a.id)! + (c.t1 - c.t0))
+    }
+  }
+  const riders = new Map<string, { fare: number; exact: number; km: number; coverage: number }>()
+  const lastAt = chunks.length ? chunks[chunks.length - 1].t1 : 0
+  for (const a of aboard) {
+    const e = exact.get(a.id)!
+    let fare = Math.max(MIN_FARE * a.seats, round5(e))
+    // The rider's guarantee holds; anything above it stays with the driver.
+    if (a.max != null && fare > a.max) fare = a.max
+    // Share of the rider's time in the car that the track covers (1 = the phone reported throughout).
+    const span = Math.min(a.to, lastAt) - a.from
+    const coverage = span > 0 ? Math.min(1, msIn.get(a.id)! / span) : 0
+    riders.set(a.id, { fare, exact: Math.round(e), km: r1(kmIn.get(a.id)!), coverage: Math.round(coverage * 100) / 100 })
+  }
+  const fuelCost = fuelUsed * price
+  const wear = km * WEAR_PER_KM[fuel]
+  const total = Math.round(fuelCost + wear)
+  const minutes = chunks.length ? Math.round((chunks[chunks.length - 1].t1 - chunks[0].t0) / 60_000) : 0
+  const stuck = Math.round(stuckMs / 60_000)
+  const unit = FUEL_UNIT[fuel]
+  const summary = `${r1(km)} km in ${minutes} min${stuck ? ` (${stuck} min crawling in traffic)` : ''} = ${r1(fuelUsed)} ${unit} × ₹${price} = ₹${Math.round(fuelCost)} + ₹${Math.round(wear)} wear = ₹${total}`
+  return { total, km: r1(km), fuelUsed: Math.round(fuelUsed * 100) / 100, fuelCost: Math.round(fuelCost), wear: Math.round(wear), unit, fuelPrice: price, minutes, stuckMinutes: stuck, riders, driverShare: Math.round(driverShare), summary }
+}
+
+/**
+ * Learns the car from its trip computer: the fuel it really used ÷ what RideSync worked out. Blended with
+ * earlier trips (newest counts half) and kept between 0.6 and 1.6, it scales every later estimate.
+ */
+export function updatedFactor(old: number | null, samples: number, actualFuel: number, modelFuel: number) {
+  if (!(actualFuel > 0) || !(modelFuel > 0)) return { factor: old ?? 1, samples }
+  const ratio = Math.min(1.6, Math.max(0.6, actualFuel / modelFuel))
+  const factor = samples > 0 && old ? old * 0.5 + ratio * 0.5 : ratio
+  return { factor: Math.round(factor * 1000) / 1000, samples: samples + 1 }
 }

@@ -206,7 +206,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                           ],
                         ]),
                         const SizedBox(height: 10),
-                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of what the trip really costs. ${cost.summary}. It’s fixed with the live traffic when you start the trip, so a jam on the day is covered.',
+                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of what the trip really costs. ${cost.summary}. This is an estimate: the real cost comes from your phone’s GPS as you drive (real km, traffic and stops), so a jam on the day is covered. Keep RideSync open while driving.',
                             style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
                         if (!cost.ownMileage) ...[
                           const SizedBox(height: 6),
@@ -393,7 +393,7 @@ class _DriveScreenState extends State<DriveScreen> {
           Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: eta == null ? timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))) : '~${timeOf(eta.arrive)}')),
           const SizedBox(height: 8),
           Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${ride.shareFare && ride.costTotal != null ? 'trip cost ${money(ride.costTotal!)}, shared equally' : '${money(ride.farePerSeat)} per seat'}', style: const TextStyle(color: RS.ink500)),
-          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Fixed with the live traffic when you start.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Each rider’s share is fixed at drop-off from your GPS — keep RideSync open while driving.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
           if (ride.status == 'in_progress') ...[
             const SizedBox(height: 12),
             Notice(_gpsError ?? (_pos == null ? 'Starting GPS…' : 'Sharing your live location with riders. Keep RideSync open while driving.'), tone: _gpsError == null ? 'success' : 'warning', icon: Icons.my_location),
@@ -452,14 +452,53 @@ class _DriveScreenState extends State<DriveScreen> {
             LoadingButton(
               label: 'Complete ride',
               icon: Icons.flag_rounded,
-              onPressed: () => _act(context, () async {
-                await api.completeRide(ride.id);
-                _stopSharing();
-              }, Moment.completed, 'Ride completed', 'Thanks for driving! Fares show up under Earnings.'),
+              onPressed: () async {
+                // Optional trip-computer reading: teaches RideSync this car (doesn't change today's fares).
+                final fuel = context.read<Session>().user?.vehicle?.fuel ?? 'petrol';
+                final avg = ride.shareFare && fuel != 'ev' ? await _askTripComputer(context, fuel) : null;
+                if (avg == false || !context.mounted) return;
+                await _act(context, () async {
+                  await api.completeRide(ride.id, avgMileage: avg is double ? avg : null);
+                  _stopSharing();
+                }, Moment.completed, 'Ride completed', 'Thanks for driving! Each rider’s share was worked out from the trip.');
+              },
             ),
       ],
     );
   }
+}
+
+/// Asks for the trip computer's average before completing. Returns the value, null (skipped) or false (cancelled).
+Future<Object?> _askTripComputer(BuildContext context, String fuel) {
+  final c = TextEditingController();
+  return showDialog<Object?>(
+    context: context,
+    builder: (d) => AlertDialog(
+      title: const Text('Complete this ride?'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Riders still in the car are dropped now and their shares are worked out from the trip.'),
+        const SizedBox(height: 14),
+        TextField(
+          controller: c,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: 'Trip computer average (optional)', hintText: 'e.g. 7.2', suffixText: fuel == 'cng' ? 'km/kg' : 'km/L'),
+        ),
+        const SizedBox(height: 6),
+        const Text('Reset your trip meter at the start and enter the average it shows. RideSync learns how your car really drives, so future costs are even closer.',
+            style: TextStyle(color: RS.ink500, fontSize: 12.5)),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Not yet')),
+        FilledButton(
+          onPressed: () {
+            final v = double.tryParse(c.text.trim());
+            Navigator.pop(d, v != null && v >= 1 && v <= 60 ? v : null);
+          },
+          child: const Text('Complete ride'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _RiderPanel extends StatelessWidget {
@@ -522,7 +561,7 @@ class _RiderPanel extends StatelessWidget {
         const SizedBox(height: 8),
         Text('${money(b.fare)} · ${paymentLabel(b.paymentMethod, b.paymentStatus)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
         if (b.settleDue != 0)
-          Text(b.settleDue < 0 ? 'Return ${money(-b.settleDue)} to them (fare fixed lower at the start)' : '${money(b.settleDue)} more to collect', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
+          Text(b.settleDue < 0 ? 'Return ${money(-b.settleDue)} to them (final share lower than paid)' : '${money(b.settleDue)} more to collect', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           OutlinedButton.icon(

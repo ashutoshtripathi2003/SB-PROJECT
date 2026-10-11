@@ -71,6 +71,7 @@ export function vehicleFor(userId: string): Vehicle | undefined {
     seats: Number(v.seats),
     fuel: v.fuel as Vehicle['fuel'],
     ...(mileage.smooth || mileage.city || mileage.traffic ? { mileage } : {}),
+    ...(Number(v.fuel_samples) > 0 ? { fuelFactor: Number(v.fuel_factor), fuelSamples: Number(v.fuel_samples) } : {}),
   }
 }
 
@@ -149,7 +150,7 @@ export function toRide(r: Row, opts: { location?: boolean } = {}): Ride {
     driverLocation: opts.location ? json(r.driver_location, undefined) : undefined,
     womenOnly: Number(r.women_only) ? true : undefined,
     ...(r.fare_mode === 'share'
-      ? { fareMode: 'share' as const, costTotal: Number(r.cost_final ?? r.cost_total), costSummary: json<{ summary?: string }>(r.cost_detail, {}).summary }
+      ? { fareMode: 'share' as const, costTotal: Number(r.cost_final ?? r.cost_total), costSummary: json<{ summary?: string }>(r.cost_detail, {}).summary, ...(r.driver_share != null ? { driverShare: Number(r.driver_share) } : {}) }
       : {}),
   }
 }
@@ -166,6 +167,7 @@ export function toBooking(b: Row): Booking {
     ...(b.fare_max != null ? { fareMax: Number(b.fare_max), fareFinal: !!Number(b.fare_final) } : {}),
     ...(b.paid_amount != null ? { paidAmount: Number(b.paid_amount) } : {}),
     ...(Number(b.settle_due) ? { settleDue: Number(b.settle_due) } : {}),
+    ...(b.fare_detail ? { fareDetail: json<Booking['fareDetail']>(b.fare_detail, undefined) } : {}),
     status: b.status as BookingStatus,
     matchScore: Number(b.match_score),
     createdAt: String(b.created_at),

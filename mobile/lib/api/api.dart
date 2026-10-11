@@ -155,7 +155,8 @@ class Api {
   Future<void> startRide(String id) => post('/rides/$id/start');
   Future<void> sendLocation(String rideId, double lat, double lng, double? heading) =>
       post('/rides/$rideId/location', {'lat': lat, 'lng': lng, 'heading': (heading == null || heading < 0 || heading > 360) ? null : heading});
-  Future<void> completeRide(String id) => post('/rides/$id/complete');
+  /// [avgMileage]: optional trip-computer average (km/L) so RideSync learns how the car really drives.
+  Future<void> completeRide(String id, {double? avgMileage}) => post('/rides/$id/complete', {'avgMileage': ?avgMileage});
 
   /* ---- Bookings ---- */
 
