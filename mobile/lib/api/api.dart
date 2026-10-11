@@ -147,6 +147,10 @@ class Api {
   }
 
   Future<Ride> offerRide(Map<String, dynamic> body) async => Ride.fromJson(_map(await post('/rides', body)));
+
+  /// Fair fares: the trip's cost with the driver's car and the traffic forecast, and each person's share.
+  Future<CostPreview> costPreview(Place from, Place to, DateTime at, int seats) async =>
+      CostPreview.fromJson(_map(await post('/rides/cost-preview', {'origin': from.toJson(), 'destination': to.toJson(), 'departAt': at.toUtc().toIso8601String(), 'seats': seats})));
   Future<void> cancelRide(String id, [String? reason]) => post('/rides/$id/cancel', {'reason': ?reason});
   Future<void> startRide(String id) => post('/rides/$id/start');
   Future<void> sendLocation(String rideId, double lat, double lng, double? heading) =>
@@ -214,6 +218,8 @@ class Api {
   /* ---- Admin dashboard (admins only) ---- */
 
   Future<AdminStats> adminStats() async => AdminStats.fromJson(_map(await get('/admin/stats')));
+  Future<Map<String, num>> adminFuelPrices() async => (_map(await get('/admin/fuel-prices'))['prices'] as Map).cast<String, num>();
+  Future<Map<String, num>> setFuelPrices(Map<String, num> p) async => (_map(await put('/admin/fuel-prices', p))['prices'] as Map).cast<String, num>();
 
   /// [status]: scheduled | in_progress | completed | cancelled, or null for all.
   Future<List<AdminRide>> adminRides([String? status]) async =>

@@ -6,10 +6,26 @@ import 'package:ridesync/util/format.dart';
 import 'package:ridesync/util/validation.dart';
 
 void main() {
-  test('fare suggestion matches the server formula', () {
-    expect(suggestFarePerSeat(20, 3, 'petrol'), 60); // 20 km × ₹11 ÷ 4 = 55 → 60
-    expect(suggestFarePerSeat(2, 3, 'ev'), 40); // minimum ₹40
-    expect(maxFareFor(60), 90);
+  test('fair fares: online payments before the start hold the maximum share', () {
+    Booking b(Map<String, dynamic> extra) => Booking.fromJson({
+          'id': 'b1', 'rideId': 'r1', 'riderId': 'u1', 'seats': 1, 'fare': 85, 'status': 'accepted', 'createdAt': '2026-10-11T08:00:00Z',
+          'pickup': campus.toJson(), 'drop': popularPlaces.last.toJson(), ...extra,
+        });
+    final open = b({'fareMax': 155, 'fareFinal': false});
+    expect(open.isShare, isTrue);
+    expect(open.payNow('online'), 155);
+    expect(open.payNow('wallet'), 155);
+    expect(open.payNow('upi'), 85);
+    expect(b({'fareMax': 155, 'fareFinal': true}).payNow('online'), 85);
+    expect(b({}).payNow('online'), 85); // older fixed-price rides
+    expect(b({'fareMax': 155, 'fareFinal': true, 'paidAmount': 130, 'settleDue': -45}).settleDue, -45);
+  });
+
+  test('car mileage is read from the server', () {
+    final v = Vehicle.fromJson({'id': 'v', 'make': 'Hyundai', 'model': 'Venue', 'color': 'Grey', 'plate': 'MH 01 AB 4321', 'seats': 3, 'fuel': 'diesel', 'mileage': {'smooth': 6.5, 'city': 11.5, 'traffic': 3.5}});
+    expect(v.hasMileage, isTrue);
+    expect(v.mileageTraffic, 3.5);
+    expect(Vehicle.fromJson({'fuel': 'petrol'}).hasMileage, isFalse);
   });
 
   test('server links are cleaned up', () {

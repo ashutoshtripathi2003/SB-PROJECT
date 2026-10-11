@@ -280,6 +280,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             driver: m.driver,
                             vehicle: m.vehicle,
                             fare: m.fare,
+                            fareMax: m.fareMax,
                             score: m.score,
                             tier: m.tier,
                             aiChance: m.aiChance,

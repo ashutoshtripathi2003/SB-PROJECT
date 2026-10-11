@@ -43,24 +43,39 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   final _note = TextEditingController();
   RouteInfo? _route;
   bool _routing = false;
-  int? _fare;
+  CostPreview? _cost;
+  int _costSeq = 0;
   bool _publishing = false;
   String? _error;
 
-  String get _fuel => context.read<Session>().user!.vehicle?.fuel ?? 'petrol';
-  int? get _suggested => _route == null ? null : suggestFarePerSeat(_route!.distanceKm, _seats, _fuel);
-  int get _effectiveFare => _fare ?? _suggested ?? 0;
   bool get _canWomenOnly => context.read<Session>().user?.gender == 'female';
 
   Future<void> _loadRoute() async {
     if (_to == null) return;
-    setState(() => (_routing = true, _route = null, _fare = null));
+    setState(() => (_routing = true, _route = null));
     try {
       final r = await context.read<Session>().api.route(_from, _to!);
       if (mounted) setState(() => (_route = r, _routing = false));
+      _loadCost();
     } catch (e) {
       if (mounted) setState(() => (_error = errorText(e), _routing = false));
     }
+  }
+
+  void _setSeats(int n) {
+    setState(() => _seats = n);
+    _loadCost();
+  }
+
+  /// Fair fares: the trip's real cost with this car and the traffic forecast for the chosen time.
+  Future<void> _loadCost() async {
+    if (_to == null) return;
+    final seq = ++_costSeq;
+    setState(() => _cost = null);
+    try {
+      final c = await context.read<Session>().api.costPreview(_from, _to!, _at, _seats);
+      if (mounted && seq == _costSeq) setState(() => _cost = c);
+    } catch (_) {}
   }
 
   Future<void> _pickTime() async {
@@ -69,6 +84,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
     final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(_at));
     if (time == null) return;
     setState(() => _at = DateTime(date.year, date.month, date.day, time.hour, time.minute));
+    _loadCost();
   }
 
   Future<void> _publish() async {
@@ -82,7 +98,6 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         'destination': _to!.toJson(),
         'departAt': _at.toUtc().toIso8601String(),
         'seats': _seats,
-        'farePerSeat': _effectiveFare,
         'maxDetourKm': _detour,
         'preferences': _prefs.toList(),
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
@@ -100,8 +115,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   Widget build(BuildContext context) {
     final user = context.watch<Session>().user!;
     final vehicle = user.vehicle!;
-    final suggested = _suggested;
-    final maxFare = suggested == null ? 0 : maxFareFor(suggested);
+    final cost = _cost;
     return MapSheetScaffold(
       initialSize: 0.6,
       minSize: 0.35,
@@ -112,7 +126,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         traffic: _route?.segments ?? const [],
         pins: [MapPin(_from.point, 'pickup', label: _from.name), if (_to != null) MapPin(_to!.point, 'drop', label: _to!.name)],
       ),
-      footer: LoadingButton(label: _route == null ? 'Choose where you’re going' : 'Publish ride · ${money(_effectiveFare)}/seat', icon: Icons.check, loading: _publishing, onPressed: _route == null ? null : _publish),
+      footer: LoadingButton(label: _route == null ? 'Choose where you’re going' : 'Publish ride', icon: Icons.check, loading: _publishing, onPressed: _route == null ? null : _publish),
       children: [
             Panel(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -155,32 +169,51 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
             Panel(
               child: Row(children: [
                 const Expanded(child: Text('Seats to offer', style: TextStyle(fontWeight: FontWeight.w600))),
-                IconButton.outlined(onPressed: _seats > 1 ? () => setState(() => (_seats--, _fare = null)) : null, icon: const Icon(Icons.remove)),
+                IconButton.outlined(onPressed: _seats > 1 ? () => _setSeats(_seats - 1) : null, icon: const Icon(Icons.remove)),
                 SizedBox(width: 36, child: Text('$_seats', textAlign: TextAlign.center, style: RS.heading(18))),
-                IconButton.outlined(onPressed: _seats < vehicle.seats ? () => setState(() => (_seats++, _fare = null)) : null, icon: const Icon(Icons.add)),
+                IconButton.outlined(onPressed: _seats < vehicle.seats ? () => _setSeats(_seats + 1) : null, icon: const Icon(Icons.add)),
               ]),
             ),
             if (_routing) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-            if (_route != null && suggested != null) ...[
-              const SectionTitle('Cost per seat'),
+            if (_route != null) ...[
+              const SectionTitle('Trip cost, shared equally'),
               Panel(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Row(children: [
-                    Text(money(_effectiveFare), style: RS.heading(28, color: RS.primary)),
-                    const Spacer(),
-                    Text('${km(_route!.distanceKm)} · ${minutes(_route!.durationMin)}${trafficNote(_route!)}', style: const TextStyle(color: RS.ink500)),
-                  ]),
-                  Slider(
-                    value: _effectiveFare.toDouble().clamp(0, maxFare.toDouble()),
-                    min: 0,
-                    max: maxFare.toDouble(),
-                    divisions: (maxFare / 10).round().clamp(1, 1000),
-                    activeColor: RS.primary,
-                    onChanged: (v) => setState(() => _fare = (v / 10).round() * 10),
-                  ),
-                  Text('Suggested ${money(suggested)} — fuel shared between you and ${_seats == 1 ? 'your rider' : 'your $_seats riders'}. RideSync caps it at ${money(maxFare)} so it stays cost-sharing.',
-                      style: const TextStyle(color: RS.ink500, fontSize: 13, height: 1.4)),
-                ]),
+                child: cost == null
+                    ? const Padding(padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator()))
+                    : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            const Text('This trip costs about', style: TextStyle(color: RS.ink500, fontSize: 13)),
+                            Text(money(cost.total), style: RS.heading(28, color: RS.primary)),
+                          ]),
+                          const Spacer(),
+                          Text('${km(_route!.distanceKm)} · ${minutes(_route!.durationMin)}${trafficNote(_route!)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
+                        ]),
+                        const SizedBox(height: 10),
+                        Row(children: [
+                          for (final (i, (riders, each)) in cost.shares.indexed) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                                child: Column(children: [
+                                  Text(money(each), style: RS.heading(16)),
+                                  Text('each, $riders rider${riders == 1 ? '' : 's'}', style: const TextStyle(color: RS.ink500, fontSize: 11.5), textAlign: TextAlign.center),
+                                ]),
+                              ),
+                            ),
+                          ],
+                        ]),
+                        const SizedBox(height: 10),
+                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of what the trip really costs. ${cost.summary}. It’s fixed with the live traffic when you start the trip, so a jam on the day is covered.',
+                            style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
+                        if (!cost.ownMileage) ...[
+                          const SizedBox(height: 6),
+                          Text('Using typical mileage for a ${vehicle.fuel == 'ev' ? 'electric' : vehicle.fuel} car. Add your car’s own mileage in Profile → My car for an exact cost.',
+                              style: const TextStyle(color: RS.ink700, fontSize: 12.5, height: 1.4)),
+                        ],
+                      ]),
               ),
             ],
             const SectionTitle('Pickup flexibility'),
@@ -359,7 +392,8 @@ class _DriveScreenState extends State<DriveScreen> {
           const SizedBox(height: 12),
           Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: eta == null ? timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))) : '~${timeOf(eta.arrive)}')),
           const SizedBox(height: 8),
-          Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${money(ride.farePerSeat)} per seat', style: const TextStyle(color: RS.ink500)),
+          Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${ride.shareFare && ride.costTotal != null ? 'trip cost ${money(ride.costTotal!)}, shared equally' : '${money(ride.farePerSeat)} per seat'}', style: const TextStyle(color: RS.ink500)),
+          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Fixed with the live traffic when you start.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
           if (ride.status == 'in_progress') ...[
             const SizedBox(height: 12),
             Notice(_gpsError ?? (_pos == null ? 'Starting GPS…' : 'Sharing your live location with riders. Keep RideSync open while driving.'), tone: _gpsError == null ? 'success' : 'warning', icon: Icons.my_location),
@@ -487,6 +521,8 @@ class _RiderPanel extends StatelessWidget {
           ),
         const SizedBox(height: 8),
         Text('${money(b.fare)} · ${paymentLabel(b.paymentMethod, b.paymentStatus)}', style: const TextStyle(color: RS.ink500, fontSize: 13)),
+        if (b.settleDue != 0)
+          Text(b.settleDue < 0 ? 'Return ${money(-b.settleDue)} to them (fare fixed lower at the start)' : '${money(b.settleDue)} more to collect', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
           OutlinedButton.icon(

@@ -56,9 +56,26 @@ class Vehicle {
   final String plate;
   final int seats;
   final String fuel;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel});
-  factory Vehicle.fromJson(Map<String, dynamic> j) =>
-      Vehicle(id: _s(j['id']), make: _s(j['make']), model: _s(j['model']), color: _s(j['color']), plate: _s(j['plate']), seats: _i(j['seats']), fuel: _s(j['fuel']));
+
+  /// The car's own mileage (km per litre / kg / kWh) on open roads, in the city and in heavy traffic; null = typical.
+  final double? mileageSmooth, mileageCity, mileageTraffic;
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileageSmooth, this.mileageCity, this.mileageTraffic});
+  factory Vehicle.fromJson(Map<String, dynamic> j) {
+    final m = j['mileage'] is Map ? (j['mileage'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
+    double? n(Object? v) => v is num && v > 0 ? v.toDouble() : null;
+    return Vehicle(
+        id: _s(j['id']),
+        make: _s(j['make']),
+        model: _s(j['model']),
+        color: _s(j['color']),
+        plate: _s(j['plate']),
+        seats: _i(j['seats']),
+        fuel: _s(j['fuel']),
+        mileageSmooth: n(m['smooth']),
+        mileageCity: n(m['city']),
+        mileageTraffic: n(m['traffic']));
+  }
+  bool get hasMileage => mileageSmooth != null || mileageCity != null || mileageTraffic != null;
   String get title => '$color $make $model';
 }
 
@@ -206,6 +223,11 @@ class Ride {
   /// Only female students can see and book it.
   final bool womenOnly;
 
+  /// Fair fares: the trip's real cost (fuel + wear) split equally among everyone in the car.
+  final bool shareFare;
+  final int? costTotal;
+  final String? costSummary;
+
   Ride.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         driverId = _s(j['driverId']),
@@ -223,7 +245,10 @@ class Ride {
         durationMin = _i(j['durationMin']),
         route = _maps(j['route']).map(LatLngPoint.fromJson).toList(),
         driverLocation = j['driverLocation'] is Map ? DriverLocation.fromJson((j['driverLocation'] as Map).cast<String, dynamic>()) : null,
-        womenOnly = j['womenOnly'] == true;
+        womenOnly = j['womenOnly'] == true,
+        shareFare = j['fareMode'] == 'share',
+        costTotal = j['costTotal'] is num ? _i(j['costTotal']) : null,
+        costSummary = _ns(j['costSummary']);
 
   int get seatsLeft => seatsTotal - seatsBooked;
 }
@@ -251,6 +276,13 @@ class Booking {
   /// When the driver tapped "I've arrived" — starts the 5-minute free wait.
   final DateTime? arrivedAt;
 
+  /// Fair fares: `fare` is the current equal share; it never goes above [fareMax] and is fixed
+  /// ([fareFinal]) when the driver starts the trip. [settleDue] < 0: the driver returns that much.
+  final int? fareMax;
+  final bool fareFinal;
+  final int? paidAmount;
+  final int settleDue;
+
   Booking.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         rideId = _s(j['rideId']),
@@ -270,7 +302,16 @@ class Booking {
         cancelReason = _ns(j['cancelReason']),
         riderRating = j['riderRating'] == null ? null : _i(j['riderRating']),
         driverRating = j['driverRating'] == null ? null : _i(j['driverRating']),
-        arrivedAt = j['arrivedAt'] == null || j['arrivedAt'] == '' ? null : _t(j['arrivedAt']);
+        arrivedAt = j['arrivedAt'] == null || j['arrivedAt'] == '' ? null : _t(j['arrivedAt']),
+        fareMax = j['fareMax'] is num ? _i(j['fareMax']) : null,
+        fareFinal = j['fareFinal'] == true,
+        paidAmount = j['paidAmount'] is num ? _i(j['paidAmount']) : null,
+        settleDue = j['settleDue'] is num ? _i(j['settleDue']) : 0;
+
+  bool get isShare => fareMax != null;
+
+  /// What a payment made now takes: online and wallet payments before the start take the maximum.
+  int payNow(String method) => (method == 'wallet' || method == 'online') && fareMax != null && !fareFinal ? fareMax! : fare;
 
   bool get isPaid => const ['marked_paid', 'received', 'paid_online'].contains(paymentStatus);
   bool get isActive => const ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(status);
@@ -288,6 +329,9 @@ class MatchResult {
   final int timeDiffMin;
   final double detourKm;
   final int fare;
+
+  /// Fair fares: the most this seat can cost (per seat).
+  final int? fareMax;
   final List<String> reasons;
   final List<String> caveats;
   final String? history;
@@ -307,10 +351,34 @@ class MatchResult {
         timeDiffMin = _i(j['timeDiffMin']),
         detourKm = _d(j['detourKm']),
         fare = _i(j['fare']),
+        fareMax = j['fareMax'] is num ? _i(j['fareMax']) : null,
         reasons = _strings(j['reasons']),
         caveats = _strings(j['caveats']),
         history = _ns(j['history']),
         aiChance = j['aiChance'] is num ? _d(j['aiChance']) : null;
+}
+
+/// Driver's preview of a trip's cost (fair fares).
+class CostPreview {
+  final int total, fuelCost, wear, fuelPrice, perPersonIfFull, trafficDelayMin;
+  final double fuelUsed;
+  final String unit, summary;
+  final bool ownMileage;
+
+  /// What each rider pays with 1, 2, … riders going the whole way.
+  final List<(int riders, int each)> shares;
+  CostPreview.fromJson(Map<String, dynamic> j)
+      : total = _i((j['cost'] as Map)['total']),
+        fuelCost = _i((j['cost'] as Map)['fuelCost']),
+        wear = _i((j['cost'] as Map)['wear']),
+        fuelPrice = _i((j['cost'] as Map)['fuelPrice']),
+        fuelUsed = _d((j['cost'] as Map)['fuelUsed']),
+        unit = _s((j['cost'] as Map)['unit']),
+        summary = _s((j['cost'] as Map)['summary']),
+        perPersonIfFull = _i(j['perPersonIfFull']),
+        trafficDelayMin = _i(j['trafficDelayMin']),
+        ownMileage = j['ownMileage'] == true,
+        shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']))).toList();
 }
 
 class FeedItem {

@@ -142,7 +142,13 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
               Expanded(child: Text(when(ride.departAt), style: RS.heading(22))),
               Text(money(m?.fare ?? ride.farePerSeat), style: RS.heading(24, color: RS.primary)),
             ]),
-            Text('${km(ride.distanceKm)} · about ${minutes(ride.durationMin)} · per seat', style: const TextStyle(color: RS.ink500)),
+            Text('${km(ride.distanceKm)} · about ${minutes(ride.durationMin)} · ${ride.shareFare ? 'your share per seat' : 'per seat'}${m?.fareMax != null ? ' · never more than ${money(m!.fareMax!)}' : ''}', style: const TextStyle(color: RS.ink500)),
+            if (ride.shareFare && ride.costTotal != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                  'The trip costs about ${money(ride.costTotal!)} in fuel and wear${ride.costSummary != null ? ' (${ride.costSummary})' : ''}. It’s split equally among everyone in the car, ${d.driver.firstName} included, by the km each person rides. Your share drops as more riders join and is fixed with the live traffic when the trip starts.',
+                  style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
+            ],
             const SizedBox(height: 16),
             FadeSlideIn(child: Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: timeOf(arrive)))),
             const SizedBox(height: 12),
@@ -501,8 +507,14 @@ class _TripView extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${money(b.fare)} · ${b.seats} seat${b.seats == 1 ? '' : 's'}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('${money(b.fare)} · ${b.seats} seat${b.seats == 1 ? '' : 's'}${b.isShare ? (b.fareFinal ? ' · final share' : ' · your share now') : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 Text(paymentLabel(b.paymentMethod, b.paymentStatus), style: const TextStyle(color: RS.ink500, fontSize: 13)),
+                if (b.isShare && !b.fareFinal)
+                  Text('Drops if more riders join · fixed when the trip starts · never more than ${money(b.fareMax!)}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+                if (b.settleDue != 0)
+                  Text(b.settleDue < 0 ? 'The driver returns ${money(-b.settleDue)} to you' : 'Pay the driver ${money(b.settleDue)} more', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                if (b.fareFinal && b.settleDue == 0 && b.paidAmount != null && b.paidAmount! > b.fare)
+                  Text('You paid ${money(b.paidAmount!)}; ${money(b.paidAmount! - b.fare)} is coming back to you', style: const TextStyle(color: RS.success, fontSize: 12.5, fontWeight: FontWeight.w600)),
               ]),
             ),
             if (b.isPaid) const Icon(Icons.check_circle, color: RS.success),
@@ -672,7 +684,7 @@ void showPaySheet(BuildContext context, BookingDetail d) {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Did the payment go through?'),
-        content: Text('Only confirm after your UPI app shows ${money(b.fare)} sent to $upi.'),
+        content: Text('Only confirm after your UPI app shows ${money(b.payNow('upi'))} sent to $upi.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not yet')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Yes, I paid')),
@@ -712,8 +724,13 @@ void showPaySheet(BuildContext context, BookingDetail d) {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Pay ${money(b.fare)}', style: RS.heading(24)),
+          Text(b.isShare && !b.fareFinal ? 'Your share: ${money(b.fare)}' : 'Pay ${money(b.fare)}', style: RS.heading(24)),
           const SizedBox(height: 4),
+          if (b.isShare && !b.fareFinal) ...[
+            Text('Never more than ${money(b.fareMax!)}. It drops if more riders join and is fixed with the live traffic when ${d.driver.firstName} starts the trip. Wallet and online payments hold ${money(b.fareMax!)} and the difference comes straight back; UPI pays ${money(b.fare)} now and ${d.driver.firstName} returns any difference.',
+                style: const TextStyle(color: RS.ink700, fontSize: 13, height: 1.4)),
+            const SizedBox(height: 6),
+          ],
           Text(razorpayKey != null ? 'Pay from your wallet or online, or pay ${d.driver.firstName} directly.' : 'You pay ${d.driver.firstName} directly. RideSync never holds your money.', style: const TextStyle(color: RS.ink500)),
           const SizedBox(height: 18),
           if (!kIsWeb)
@@ -722,7 +739,7 @@ void showPaySheet(BuildContext context, BookingDetail d) {
               builder: (_, snap) {
                 final w = snap.data;
                 if (w == null || (!w.canTopUp && w.balance == 0)) return const SizedBox.shrink();
-                final short = b.fare - w.balance;
+                final short = b.payNow('wallet') - w.balance;
                 return option(
                   Icons.account_balance_wallet,
                   'RideSync Wallet',
@@ -738,14 +755,14 @@ void showPaySheet(BuildContext context, BookingDetail d) {
               },
             ),
           if (razorpayKey != null && !kIsWeb)
-            option(Icons.lock_outline, 'Pay online', 'UPI, cards, netbanking · secured by Razorpay · refunded if cancelled', () {
+            option(Icons.lock_outline, 'Pay online · ${money(b.payNow('online'))}', 'UPI, cards, netbanking · secured by Razorpay · refunded if cancelled', () {
               Navigator.pop(sheet);
               _payOnline(context, d);
             }),
           if (upi != null) ...[
             option(Icons.account_balance_wallet_outlined, 'Pay by UPI app', 'Opens GPay, PhonePe or Paytm · $upi', () async {
               Navigator.pop(sheet);
-              final launched = await launchUrl(Uri.parse(upiLink(upi, d.driver.name, b.fare, 'RideSync ride ${b.id}')), mode: LaunchMode.externalApplication).catchError((_) => false);
+              final launched = await launchUrl(Uri.parse(upiLink(upi, d.driver.name, b.payNow('upi'), 'RideSync ride ${b.id}')), mode: LaunchMode.externalApplication).catchError((_) => false);
               if (!context.mounted) return;
               if (!launched) toast(context, 'No UPI app found. Pay $upi from any UPI app, then come back.');
               await afterUpi();
@@ -758,11 +775,11 @@ void showPaySheet(BuildContext context, BookingDetail d) {
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('Scan to pay ${money(b.fare)}', style: RS.heading(20)),
+                      Text('Scan to pay ${money(b.payNow('upi'))}', style: RS.heading(20)),
                       const SizedBox(height: 4),
                       Text('to ${d.driver.name} · $upi', style: const TextStyle(color: RS.ink500)),
                       const SizedBox(height: 16),
-                      QrImageView(data: upiLink(upi, d.driver.name, b.fare, 'RideSync ride ${b.id}'), size: 220, eyeStyle: const QrEyeStyle(color: RS.ink900, eyeShape: QrEyeShape.square), dataModuleStyle: const QrDataModuleStyle(color: RS.ink900)),
+                      QrImageView(data: upiLink(upi, d.driver.name, b.payNow('upi'), 'RideSync ride ${b.id}'), size: 220, eyeStyle: const QrEyeStyle(color: RS.ink900, eyeShape: QrEyeShape.square), dataModuleStyle: const QrDataModuleStyle(color: RS.ink900)),
                       const SizedBox(height: 16),
                       LoadingButton(
                         label: 'I’ve paid',
@@ -782,7 +799,7 @@ void showPaySheet(BuildContext context, BookingDetail d) {
           option(Icons.payments_outlined, 'Cash at pickup', 'Hand the exact amount to the driver', () async {
             Navigator.pop(sheet);
             if (await attempt(context, () => api.pay(b.id, 'cash')) && context.mounted) {
-              await showSuccess(context, 'Seat confirmed', subtitle: 'Pay ${money(b.fare)} in cash at pickup.');
+              await showSuccess(context, 'Seat confirmed', subtitle: b.isShare ? 'Pay your final share in cash at pickup.' : 'Pay ${money(b.fare)} in cash at pickup.');
             }
           }),
           const SizedBox(height: 4),
@@ -811,21 +828,23 @@ Future<void> _payOnline(BuildContext context, BookingDetail d) async {
   final r = await razorpayCheckout(context, order, fallbackDescription: 'Ride with ${d.driver.name}');
   if (r == null || !context.mounted) return;
   if (await attempt(context, () => api.verifyOnline(d.booking.id, r.orderId, r.paymentId, r.signature)) && context.mounted) {
-    await showSuccess(context, 'Paid ${money(d.booking.fare)}', subtitle: 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
+    await showSuccess(context, 'Paid ${money(d.booking.payNow('online'))}',
+        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. Anything above your final share comes back when the trip starts.' : 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
   }
 }
 
 /// Pays from the RideSync Wallet, topping up the missing amount through Razorpay first if needed.
 Future<void> _payWallet(BuildContext context, BookingDetail d, WalletInfo w) async {
   final api = context.read<Session>().api;
-  final fare = d.booking.fare;
+  final fare = d.booking.payNow('wallet');
   if (w.balance < fare) {
     final short = fare - w.balance;
     final added = await addMoney(context, suggested: short < 10 ? 10 : short, testMode: w.testMode);
     if (!added || !context.mounted) return;
   }
   if (await attempt(context, () => api.payFromWallet(d.booking.id)) && context.mounted) {
-    await showSuccess(context, 'Paid ${money(fare)} from wallet', subtitle: 'Your seat is confirmed. Refunded to your wallet if the ride is cancelled.');
+    await showSuccess(context, 'Paid ${money(fare)} from wallet',
+        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. Anything above your final share comes back to your wallet when the trip starts.' : 'Your seat is confirmed. Refunded to your wallet if the ride is cancelled.');
   }
 }
 

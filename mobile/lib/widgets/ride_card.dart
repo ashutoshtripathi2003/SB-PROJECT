@@ -70,8 +70,11 @@ class DriverRow extends StatelessWidget {
 
 /// A ride offer in lists (Home feed, search results).
 class RideCard extends StatelessWidget {
-  const RideCard({super.key, required this.ride, required this.driver, required this.vehicle, this.fare, this.score, this.tier, this.aiChance, this.onTap});
+  const RideCard({super.key, required this.ride, required this.driver, required this.vehicle, this.fare, this.fareMax, this.score, this.tier, this.aiChance, this.onTap});
   final Ride ride;
+
+  /// Fair fares: the most this seat can cost.
+  final int? fareMax;
   final PublicUser driver;
   final Vehicle vehicle;
   final int? fare;
@@ -92,7 +95,10 @@ class RideCard extends StatelessWidget {
           Text(when(ride.departAt), style: RS.heading(15)),
           const Spacer(),
           if (score != null) ...[MatchBadge(score: score!, tier: tier), const SizedBox(width: 8)],
-          Text(money(fare ?? ride.farePerSeat), style: RS.heading(18, color: RS.primary)),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('${fare == null && ride.shareFare ? 'from ' : ''}${money(fare ?? ride.farePerSeat)}', style: RS.heading(18, color: RS.primary)),
+            if (fareMax != null && fare != null && fareMax! > fare!) Text('max ${money(fareMax!)}', style: const TextStyle(color: RS.ink500, fontSize: 11.5)),
+          ]),
         ]),
         if (ride.womenOnly || (aiChance ?? 0) >= 0.75) ...[
           const SizedBox(height: 8),
