@@ -72,9 +72,19 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
       <hr className="divider" />
       <div className="bill">
         <div className="bill__row">
-          <span>Cost share</span>
+          <span>{booking.fareMax == null ? 'Cost share' : booking.fareFinal ? 'Your final equal share' : 'Your equal share now'}</span>
           <span>{money(booking.fare)}</span>
         </div>
+        {booking.fareMax != null && !booking.fareFinal && (
+          <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
+            <span>Drops if more riders join · fixed when the trip starts · never more than {money(booking.fareMax)}</span>
+          </div>
+        )}
+        {ride.costTotal != null && booking.fareMax != null && (
+          <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
+            <span>Trip cost {money(ride.costTotal)}{ride.costSummary ? ` — ${ride.costSummary}` : ''}</span>
+          </div>
+        )}
         <div className="bill__row">
           <span>Platform fee</span>
           <span className="t-success">Free</span>
@@ -83,6 +93,16 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
           <span>Total</span>
           <span>{money(booking.fare)}</span>
         </div>
+        {booking.paidAmount != null && booking.paidAmount !== booking.fare && booking.fareFinal && !booking.settleDue && (
+          <div className="bill__row t-sm" style={{ color: 'var(--success-600)' }}>
+            <span>You paid {money(booking.paidAmount)}; {money(booking.paidAmount - booking.fare)} is coming back to you.</span>
+          </div>
+        )}
+        {!!booking.settleDue && (
+          <div className="bill__row t-sm" style={{ color: 'var(--warning-600)' }}>
+            <span>{booking.settleDue < 0 ? `The driver returns ${money(-booking.settleDue)} to you.` : `Pay the driver ${money(booking.settleDue)} more.`}</span>
+          </div>
+        )}
         <div className="row row--between t-sm t-muted" style={{ marginTop: 4 }}>
           <span>{paymentLabel(booking)}</span>
           {(booking.paymentStatus === 'received' || booking.paymentStatus === 'paid_online') && (

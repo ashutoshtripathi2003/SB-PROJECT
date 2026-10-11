@@ -173,6 +173,9 @@
   display: grid;
   gap: var(--space-6);
 }
+@media (min-width: 480px) {
+  .split--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (min-width: 1024px) {
   .split--2 { grid-template-columns: 1fr 1fr; }
   .split--aside { grid-template-columns: 1fr 320px; align-items: start; }

@@ -45,7 +45,7 @@ export function RideCard({ match, onOpen, active, showDay }: { match: MatchResul
         </div>
         <div className="ride-card__fare">
           <strong>{money(match.fare)}</strong>
-          <span>/ seat</span>
+          <span>{match.fareMax != null && match.fareMax > match.fare ? `/ seat · max ${money(match.fareMax)}` : '/ seat'}</span>
         </div>
       </div>
 

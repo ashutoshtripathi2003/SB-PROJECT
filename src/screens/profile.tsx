@@ -468,7 +468,7 @@ function Safety() {
 }
 
 const FAQ = [
-  ['How is the cost per seat decided?', 'Drivers see a suggested cost-share based on distance, fuel type and seats. It covers fuel, tolls and wear — RideSync is for sharing costs, so drivers can’t charge more than 1.5× the suggestion.'],
+  ['How is the fare decided?', 'Nobody sets a price. RideSync works out what the trip really costs: the fuel the driver’s own car burns on this route (it uses their mileage for open roads, city and heavy traffic, and TomTom’s traffic for that time) at today’s fuel price, plus tyres and servicing. That cost is split equally among everyone in the car, the driver included, by the km each person rides. You see your share and a guaranteed maximum when you book; your share drops as more riders join and is fixed with the live traffic when the driver starts the trip.'],
   ['What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this ride?” on any ride to see the breakdown.'],
   ['What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'],
   ['Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'],

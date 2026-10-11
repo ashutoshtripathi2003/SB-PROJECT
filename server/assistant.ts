@@ -86,7 +86,7 @@ export async function answer(userId: string, firstName: string, text: string): P
     case 'pin':
       return r('Your 4-digit ride PIN is shown on your trip screen once the driver accepts. Tell it to the driver when you get in — it proves you’re in the right car. Never share it in chat.', [{ type: 'link', label: 'My rides', to: '/rides' }])
     case 'pricing':
-      return r('RideSync is cost-sharing: price per seat = trip distance × fuel cost per km (petrol ₹11, diesel ₹10, CNG ₹7, EV ₹5) ÷ (seats + driver), rounded to ₹10, minimum ₹40. Drivers can’t charge more than 1.5× that.')
+      return r('Nobody sets a price. RideSync works out the trip’s real cost: the fuel the driver’s car burns on this route (their own mileage for open roads, city and heavy traffic, with TomTom’s traffic) at today’s fuel price, plus tyres and servicing. That cost is split equally among everyone in the car, the driver included, by the km each person rides. You see your share and a guaranteed maximum when you book; it drops as more riders join and is fixed with the live traffic when the trip starts.')
     case 'refund':
       return r('If a ride is cancelled, wallet payments return to your wallet instantly and online payments go back to your bank in 5–7 working days. UPI/cash paid to the driver is refunded by the driver directly.', [{ type: 'link', label: 'Wallet', to: '/wallet' }])
     case 'wallet':
