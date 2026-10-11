@@ -317,7 +317,7 @@ No laptop handy? Open the website in Safari → **Share** → **Add to Home Scre
 - live trip status
 - payment by UPI (opens GPay/PhonePe/Paytm) or cash
 - the driver's live GPS on the map
-- Offer a ride with the suggested cost-share
+- Offer a ride and see the trip's real cost (your car's mileage + traffic) and each person's equal share
 - driver controls (accept/decline, start, arrived, picked up, dropped off, complete)
 - chat, notifications, My Rides, payments
 - SOS (112 and a text to your emergency contacts) and ratings
@@ -371,7 +371,7 @@ Production must be served over **HTTPS**. Login cookies are marked secure, and p
 |---|---|
 | Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 90-day httpOnly session cookie. |
 | Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
-| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), suggests a cost-share and enforces the 1.5× cap. Every online student's search and Home feed refresh straight away. |
+| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), works out the trip's real cost from the driver's mileage, the traffic and the admin's fuel prices; riders share it equally by km, see a maximum when booking, and the share is fixed with live traffic when the trip starts (`server/fare.ts`). Every online student's search and Home feed refresh straight away. |
 | Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
 | Book | The rider requests a seat and the driver gets a live notification. The driver accepts or declines, and seats can't be overbooked. |
 | Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**, or **pay online** when Razorpay is set up. The driver can mark UPI or cash payment as received. |
