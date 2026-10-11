@@ -31,12 +31,28 @@ IconData _icon(String kind) => switch (kind) {
       _ => Icons.notifications_none,
     };
 
-class NotificationsList extends StatelessWidget {
+class NotificationsList extends StatefulWidget {
   const NotificationsList({super.key});
+  @override
+  State<NotificationsList> createState() => _NotificationsListState();
+}
+
+class _NotificationsListState extends State<NotificationsList> {
+  bool _seen = false;
+
+  /// Looking at the list counts as reading it (like Uber / Instagram): the Inbox badge clears.
+  void _markSeen(List<AppNotification> list) {
+    if (_seen || list.every((n) => n.read)) return;
+    _seen = true;
+    final api = context.read<Session>().api;
+    WidgetsBinding.instance.addPostFrameCallback((_) => api.readAllNotifications().catchError((_) {}));
+  }
+
   @override
   Widget build(BuildContext context) => LiveLoader<List<AppNotification>>(
         load: (api) => api.notifications(),
         builder: (context, list, reload) {
+          _markSeen(list);
           if (list.isEmpty) {
             return ListView(children: const [EmptyState(icon: Icons.notifications_none, title: 'You’re all caught up', body: 'Ride requests, acceptances and payments show up here.')]);
           }

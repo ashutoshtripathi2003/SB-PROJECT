@@ -135,7 +135,13 @@ describe('full ride between two devices', () => {
     // Chat both ways.
     expect((await rider.post(`/api/bookings/${bookingId}/messages`).set(H).send({ text: 'Hi!' })).status).toBe(200)
     expect((await driver.post(`/api/bookings/${bookingId}/messages`).set(H).send({ text: 'See you at 5' })).status).toBe(200)
+    expect((await rider.get('/api/badges')).body.unread).toBeGreaterThan(0)
     const msgs = await rider.get(`/api/bookings/${bookingId}/messages`)
+    // Opening the chat (and earlier the trip) marks every notification about this booking as read.
+    const unreadAfter = (await rider.get('/api/notifications')).body.filter((n: { read: boolean }) => !n.read)
+    expect(unreadAfter.filter((n: { link?: string }) => n.link?.includes(bookingId))).toHaveLength(0)
+    // Only the welcome note is left; it clears when the Notifications list is opened.
+    expect(unreadAfter.map((n: { title: string }) => n.title)).toEqual(['Welcome to RideSync'])
     expect(msgs.body.filter((m: { system: boolean }) => !m.system).map((m: { text: string }) => m.text)).toEqual(['Hi!', 'See you at 5'])
 
     // Live ride.
