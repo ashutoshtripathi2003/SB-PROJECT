@@ -154,6 +154,7 @@ class _PinPickerState extends State<_PinPicker> {
       children: [
         fm.TileLayer(
           urlTemplate: tiles,
+          evictErrorTileStrategy: fm.EvictErrorTileStrategy.notVisibleRespectMargin,
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
         ),

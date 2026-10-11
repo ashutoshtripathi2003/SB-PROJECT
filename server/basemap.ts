@@ -9,7 +9,8 @@ import { tomtomConfigured } from './traffic'
  *   1. TomTom map   (TOMTOM_KEY — the same key as live traffic; free plan has 50,000 tiles a day)
  *   2. MapTiler     (MAPTILER_KEY, when its key isn't limited to websites)
  *   3. OpenStreetMap (no key; light use only, which the cache below keeps it to)
- * A service that refuses or fails is skipped for 10 minutes. Tiles are cached for a week.
+ * A refusing service is skipped for a while (refused key 10 min, burst limit 20 s); at most 6 fetches
+ * run at once so zooming doesn't trip the free plans' burst limits. Tiles are cached for a week.
  */
 
 type Source = { name: string; url: (z: number, x: number, y: number, hi?: boolean) => string; attribution: string }
@@ -49,25 +50,70 @@ export async function basemapTile(z: number, x: number, y: number, hi = false): 
     cache.set(k, hit)
     return hit
   }
-  for (const s of available()) {
-    try {
-      const res = await fetch(s.url(z, x, y, hi), { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': UA } })
-      if (!res.ok || !String(res.headers.get('content-type')).startsWith('image/')) {
-        if ([401, 403, 429].includes(res.status) || res.status >= 500) {
-          if ((pausedUntil.get(s.name) ?? 0) < Date.now()) console.log(`[ridesync] phone app map: ${NAMES[s.name]} refused (${res.status}) — trying the next map for 10 minutes`)
-          pausedUntil.set(s.name, Date.now() + 10 * 60_000)
+  // The same tile asked for twice at once (zooming, two phones) is fetched once.
+  const running = inflight.get(k)
+  if (running) return running
+  const job = fetchTile(z, x, y, hi, k).finally(() => inflight.delete(k))
+  inflight.set(k, job)
+  return job
+}
+
+const inflight = new Map<string, Promise<{ body: Buffer; source: string } | null>>()
+
+/*
+ * Zooming asks for dozens of tiles at once; free map plans answer bursts with 429 "too many requests".
+ * At most MAX_ACTIVE upstream fetches run together, the rest wait their turn (the phone just sees a tile
+ * arrive a moment later instead of a failure).
+ */
+const MAX_ACTIVE = 6
+let active = 0
+const waiting: (() => void)[] = []
+const takeSlot = () => (active < MAX_ACTIVE ? (active++, Promise.resolve()) : new Promise<void>((r) => waiting.push(r)))
+const freeSlot = () => {
+  const next = waiting.shift()
+  if (next) next()
+  else active--
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** A refusing service is skipped for a while: a refused key for 10 minutes, a burst limit for 20 seconds. */
+function pause(name: string, status: number) {
+  const ms = status === 401 || status === 403 ? 10 * 60_000 : status === 429 ? 20_000 : status >= 500 ? 30_000 : 0
+  if (!ms) return
+  if ((pausedUntil.get(name) ?? 0) < Date.now())
+    console.log(`[ridesync] phone app map: ${NAMES[name]} ${status === 429 ? 'busy (too many requests)' : `refused (${status})`} — using the next map for ${ms >= 60_000 ? `${ms / 60_000} minutes` : `${ms / 1000} seconds`}`)
+  pausedUntil.set(name, Date.now() + ms)
+}
+
+async function fetchTile(z: number, x: number, y: number, hi: boolean, k: string): Promise<{ body: Buffer; source: string } | null> {
+  await takeSlot()
+  try {
+    for (const s of available()) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await fetch(s.url(z, x, y, hi), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': UA } })
+          if (res.ok && String(res.headers.get('content-type')).startsWith('image/')) {
+            const out = { at: Date.now(), body: Buffer.from(await res.arrayBuffer()), source: s.name }
+            if (cache.size >= 4000) cache.delete(cache.keys().next().value!)
+            cache.set(k, out)
+            return out
+          }
+          // One quick retry on a burst limit before moving on.
+          if (res.status === 429 && attempt === 0) {
+            await sleep(700)
+            continue
+          }
+          pause(s.name, res.status)
+        } catch {
+          pausedUntil.set(s.name, Date.now() + 15_000)
         }
-        continue
+        break
       }
-      const out = { at: Date.now(), body: Buffer.from(await res.arrayBuffer()), source: s.name }
-      if (cache.size >= 4000) cache.delete(cache.keys().next().value!)
-      cache.set(k, out)
-      return out
-    } catch {
-      pausedUntil.set(s.name, Date.now() + 60_000)
     }
+    return null
+  } finally {
+    freeSlot()
   }
-  return null
 }
 
 const NAMES: Record<string, string> = { tomtom: 'TomTom', maptiler: 'MapTiler', osm: 'OpenStreetMap' }

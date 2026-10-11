@@ -12,6 +12,7 @@ import '../widgets/motion.dart';
 import '../widgets/place_picker.dart';
 import '../widgets/ride_card.dart';
 import '../widgets/ride_map.dart';
+import '../widgets/trip_time.dart';
 import 'trip.dart';
 
 DateTime defaultDeparture() {
@@ -88,7 +89,12 @@ class _FindTabState extends State<FindTab> {
           padding: pad,
           route: _preview?.coords ?? const [],
           traffic: _preview?.segments ?? const [],
-          pins: [MapPin(_pickup.point, 'pickup', label: _pickup.name), if (_drop != null) MapPin(_drop!.point, 'drop', label: _drop!.name)],
+          pins: [
+            MapPin(_pickup.point, 'pickup', label: _pickup.name),
+            if (_drop != null) MapPin(_drop!.point, 'drop', label: _drop!.name),
+            // Trip time + traffic on the route itself, like Google Maps.
+            if (_preview != null) ?previewEtaPin(_preview!),
+          ],
         ),
         footer: LoadingButton(label: 'Find a ride', icon: Icons.search, onPressed: _search),
         children: [

@@ -108,9 +108,21 @@ MapPin? etaPin(List<LatLngPoint> route, TripEta eta, [LatLngPoint? at]) {
   final sub = switch (eta.traffic) {
     'light' => 'Light traffic · ${km(eta.km)}',
     null => km(eta.km),
-    _ => '+${eta.delay} min traffic',
+    _ => '${eta.traffic == 'heavy' ? 'Heavy' : 'Moderate'} traffic · +${eta.delay} min',
   };
   return MapPin(p, 'eta', label: minutes(eta.minutes), sublabel: sub, tone: eta.traffic);
+}
+
+/// The time bubble for a route preview (before a ride exists): "1 h 6 min" + "Moderate traffic · +16 min".
+MapPin? previewEtaPin(RouteInfo r) {
+  final p = pointAlong(r.coords);
+  if (p == null) return null;
+  final sub = switch (r.traffic) {
+    'light' => 'Light traffic · ${km(r.distanceKm)}',
+    'moderate' || 'heavy' => '${r.traffic == 'heavy' ? 'Heavy' : 'Moderate'} traffic · +${r.trafficDelayMin} min',
+    _ => km(r.distanceKm),
+  };
+  return MapPin(p, 'eta', label: minutes(r.durationMin), sublabel: sub, tone: r.traffic);
 }
 
 /// Seconds since [since], ticking every second — the wait timer at pickup.
