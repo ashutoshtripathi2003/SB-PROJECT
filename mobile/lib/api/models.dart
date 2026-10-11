@@ -277,7 +277,7 @@ class Booking {
   final DateTime? arrivedAt;
 
   /// Fair fares: `fare` is the current equal share; it never goes above [fareMax] and is fixed
-  /// ([fareFinal]) when the driver starts the trip. [settleDue] < 0: the driver returns that much.
+  /// ([fareFinal]) when the driver starts the trip. [fareMax] is the price booked at; it never goes up. [settleDue] < 0: the driver returns that much.
   final int? fareMax;
   final bool fareFinal;
   final int? paidAmount;
@@ -311,7 +311,8 @@ class Booking {
   bool get isShare => fareMax != null;
 
   /// What a payment made now takes: online and wallet payments before the start take the maximum.
-  int payNow(String method) => (method == 'wallet' || method == 'online') && fareMax != null && !fareFinal ? fareMax! : fare;
+  /// What a payment made now takes: before the start, the booked price (anything lower comes back at the start).
+  int payNow(String method) => method != 'cash' && fareMax != null && !fareFinal ? fareMax! : fare;
 
   bool get isPaid => const ['marked_paid', 'received', 'paid_online'].contains(paymentStatus);
   bool get isActive => const ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress'].contains(status);
@@ -365,6 +366,10 @@ class CostPreview {
   final String unit, summary;
   final bool ownMileage;
 
+  /// Which mileage was used: 'own', 'model' (the car model's typical figures) or 'typical' (for the fuel).
+  final String mileageSource;
+  final String? carName;
+
   /// What each rider pays with 1, 2, … riders going the whole way.
   final List<(int riders, int each)> shares;
   CostPreview.fromJson(Map<String, dynamic> j)
@@ -378,6 +383,8 @@ class CostPreview {
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
         ownMileage = j['ownMileage'] == true,
+        mileageSource = j['mileage'] is Map ? _s((j['mileage'] as Map)['source']) : 'typical',
+        carName = j['mileage'] is Map ? _ns((j['mileage'] as Map)['name']) : null,
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']))).toList();
 }
 

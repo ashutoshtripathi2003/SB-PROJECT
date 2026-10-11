@@ -131,7 +131,7 @@ export function Payment() {
             <h1 className="t-h1">Seat confirmed</h1>
             <p className="t-body t-muted">
               {done === 'wallet' ? `${money(payNowAmount(booking, 'wallet'))} paid from your RideSync Wallet. ${name} has been notified.` : done === 'online' ? `${money(payNowAmount(booking, 'online'))} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} your final share in cash at pickup.`}
-              {share && (done === 'wallet' || done === 'online') && ' Anything above your final share comes back to you when the trip starts.'}
+              {share && (done === 'wallet' || done === 'online') && ' If your price is lower when the trip starts, the difference comes back to you automatically.'}
             </p>
           </div>
           <div className="stack gap-2" style={{ marginTop: 16 }}>
@@ -161,13 +161,13 @@ export function Payment() {
             </span>
             <div className="bill" style={{ marginTop: 12 }}>
               <div className="bill__row">
-                <span>{share ? 'Your equal share now' : 'Cost share'}</span>
-                <span>{money(booking.fare)}</span>
+                <span>{share ? 'Your booked price' : 'Cost share'}</span>
+                <span>{money(share ? booking.fareMax! : booking.fare)}</span>
               </div>
-              {share && (
-                <div className="bill__row">
-                  <span>Never more than</span>
-                  <span>{money(booking.fareMax!)}</span>
+              {share && booking.fare < booking.fareMax! && (
+                <div className="bill__row t-success">
+                  <span>Your price now (more riders joined)</span>
+                  <span>{money(booking.fare)}</span>
                 </div>
               )}
               <div className="bill__row">
@@ -180,11 +180,9 @@ export function Payment() {
               </div>
               {share && (
                 <p className="t-sm t-muted" style={{ marginTop: 6 }}>
-                  {method === 'wallet' || method === 'online'
-                    ? `Paying online holds the maximum. Your share drops if more riders join and is fixed with the live traffic when ${name} starts the trip; the difference comes straight back to you.`
-                    : method === 'upi'
-                      ? `You pay your share now. It’s fixed when ${name} starts the trip; if it drops, ${name} returns the difference (it never goes above ${money(booking.fareMax!)}).`
-                      : `You pay your final share in cash, fixed when ${name} starts the trip (never above ${money(booking.fareMax!)}).`}
+                  {method === 'cash'
+                    ? `Your price never goes up. Pay ${name} the final price in cash at pickup; it’s fixed when the trip starts and can only be lower.`
+                    : `Your price never goes up. If it’s lower when ${name} starts the trip (more riders joined, or lighter traffic), the difference comes back to you ${method === 'upi' ? `from ${name}` : 'automatically'}.`}
                 </p>
               )}
             </div>

@@ -514,8 +514,17 @@ export type CostPreview = {
   durationMin: number
   trafficDelayMin: number
   ownMileage: boolean
+  /** Which mileage was used: the driver's own, the car model's typical figures, or typical for the fuel. */
+  mileage: { mileage: { smooth: number; city: number; traffic: number }; source: 'own' | 'model' | 'typical'; name?: string }
 }
 /** The trip's cost with the driver's car and the traffic forecast for that time, and what each person pays. */
+export type CarInfo = { make: string; model: string; fuel: Vehicle['fuel']; mileage: { smooth: number; city: number; traffic: number } }
+/** Car models RideSync knows the mileage of, and the figures it would use for a given car. */
+export const cars = {
+  list: () => get<CarInfo[]>('/cars'),
+  mileage: (make: string, model: string, fuel: Vehicle['fuel']) =>
+    get<{ match: string | null; mileage: { smooth: number; city: number; traffic: number } }>(`/cars/mileage?${new URLSearchParams({ make, model, fuel })}`),
+}
 export const costPreview = (o: { origin: Place; destination: Place; departAt: string; seats: number }) => post<CostPreview>('/rides/cost-preview', o)
 
 async function mutate<T>(p: Promise<T>) {

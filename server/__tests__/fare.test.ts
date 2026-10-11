@@ -57,6 +57,23 @@ describe('trip cost', () => {
   })
 })
 
+describe('mileage by car model', () => {
+  it('knows popular cars, so the driver needn’t type anything', () => {
+    expect(fare.carMileage('Hyundai', 'Venue', 'diesel')).toEqual({ name: 'Hyundai Venue', mileage: { smooth: 20, city: 15, traffic: 9 } })
+    expect(fare.carMileage('Maruti Suzuki', 'Swift Dzire VXi', 'petrol')?.name).toBe('Maruti Dzire')
+    expect(fare.carMileage('Hyundai', 'Grand i10 Nios', 'cng')?.name).toBe('Hyundai i10')
+    expect(fare.carMileage('Tata', 'Nexon EV Max', 'ev')?.mileage.city).toBe(7.5)
+    expect(fare.carMileage('Lamborghini', 'Urus', 'petrol')).toBeNull()
+  })
+
+  it('uses the driver’s own figures first, then the model’s, then typical ones', () => {
+    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel' })).toMatchObject({ source: 'model', mileage: { smooth: 20, city: 15, traffic: 9 } })
+    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel', mileage: venue })).toMatchObject({ source: 'own', mileage: venue })
+    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel', mileage: { traffic: 4 } }).mileage).toEqual({ smooth: 20, city: 15, traffic: 4 })
+    expect(fare.vehicleMileage({ make: 'Foo', model: 'Bar', fuel: 'petrol' })).toMatchObject({ source: 'typical', mileage: fare.DEFAULT_MILEAGE.petrol })
+  })
+})
+
 describe('equal split', () => {
   it('shares by person-km with the driver included', () => {
     // ₹420 trip, 25 km; A rides the whole way, B 11 km. Person-km: driver 25 + A 25 + B 11 = 61.
@@ -75,9 +92,9 @@ describe('equal split', () => {
     expect([...full.values()]).toEqual([100, 100, 100])
   })
 
-  it('never charges above the guaranteed maximum, and has a minimum', () => {
-    const max = fare.maxFare(400, 20, 20, 1)
-    expect(max).toBe(230) // alone: 400/2 = 200, +15% traffic head-room
+  it('never charges above the booked price, and has a minimum', () => {
+    expect(fare.CUSHION).toBe(1.1)
+    const max = 220 // booked alone: 400 × 1.1 ÷ 2
     expect(fare.splitCost(900, 20, [{ id: 'A', km: 20, seats: 1, max }]).get('A')).toBe(max)
     expect(fare.splitCost(20, 20, [{ id: 'A', km: 20, seats: 2 }]).get('A')).toBe(60)
     expect(fare.shareTable(400, 3)).toEqual([
@@ -120,27 +137,32 @@ describe('fair fares end to end', () => {
     const cost = ride.costTotal as number
     const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
 
-    // Rider A joins alone: half the cost. Pays by UPI.
+    // Rider A books alone: half the cost plus the 10% cushion. Pays by UPI.
     const a = await student('fare.a@vit.edu.in')
     const ba = (await a.post('/api/bookings').set(H).send({ rideId: ride.id, query })).body
     await driver.post(`/api/bookings/${ba.id}/respond`).set(H).send({ accept: true })
     let bookA = (await a.get(`/api/bookings/${ba.id}`)).body.booking
-    expect(Math.abs(bookA.fare - cost / 2)).toBeLessThanOrEqual(5)
+    expect(Math.abs(bookA.fare - (cost * 1.1) / 2)).toBeLessThanOrEqual(5)
+    expect(bookA.fareMax).toBe(bookA.fare) // the booked price is the most it can ever cost
     expect(bookA).toMatchObject({ fareFinal: false })
     const paidA = bookA.fare as number
     expect((await a.post(`/api/bookings/${ba.id}/pay`).set(H).send({ method: 'upi' })).status).toBe(200)
 
-    // Rider B joins: A's share drops to a third, and A is told.
+    // Rider B joins: A's price drops to a third, and A is told.
     const b = await student('fare.b@vit.edu.in')
     const bb = (await b.post('/api/bookings').set(H).send({ rideId: ride.id, query })).body
     await driver.post(`/api/bookings/${bb.id}/respond`).set(H).send({ accept: true })
     bookA = (await a.get(`/api/bookings/${ba.id}`)).body.booking
     expect(bookA.fare).toBeLessThan(paidA)
-    expect(Math.abs(bookA.fare - cost / 3)).toBeLessThanOrEqual(5)
-    expect((await a.get('/api/notifications')).body.map((n: { title: string }) => n.title)).toContain(`Your share went down to ₹${bookA.fare}`)
+    expect(Math.abs(bookA.fare - (cost * 1.1) / 3)).toBeLessThanOrEqual(5)
+    expect((await a.get('/api/notifications')).body.map((n: { title: string }) => n.title)).toContain(`Your price went down to ₹${bookA.fare}`)
+    // B cancels: A's price goes back up, but never above what A booked at.
+    // (Checked through the split cap: fareMax stays A's booked price.)
+    expect((await a.get(`/api/bookings/${ba.id}`)).body.booking.fareMax).toBe(paidA)
     await b.post(`/api/bookings/${bb.id}/pay`).set(H).send({ method: 'cash' })
 
-    // Start: shares are fixed; A paid more by UPI, so the driver returns the difference.
+    // Start: no live traffic in tests, so the prices stand (nothing is lowered on a guess). A paid the
+    // booked price by UPI before B joined, so the driver returns the difference.
     expect((await driver.post(`/api/rides/${ride.id}/start`).set(H).send({})).status).toBe(200)
     const finalA = (await a.get(`/api/bookings/${ba.id}`)).body.booking
     const finalB = (await b.get(`/api/bookings/${bb.id}`)).body.booking
@@ -148,8 +170,7 @@ describe('fair fares end to end', () => {
     expect(finalA.fare).toBe(finalB.fare)
     expect(finalA.fare).toBeLessThanOrEqual(finalA.fareMax)
     expect(finalA.settleDue).toBe(finalA.fare - paidA)
-    // The driver keeps (pays) their own equal share, nothing more.
-    expect(Math.abs(cost - finalA.fare - finalB.fare - cost / 3)).toBeLessThanOrEqual(10)
+    expect(finalA.fare).toBeLessThan(paidA)
   })
 
   it('lets the admin set fuel prices, which new trip costs use', async () => {

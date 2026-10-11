@@ -104,6 +104,13 @@ class Api {
 
   Future<User> me() async => User.fromJson(_map(await get('/me')));
   Future<User> updateMe(Map<String, dynamic> patch) async => User.fromJson(_map(await this.patch('/me', patch)));
+  /// The mileage RideSync would use for this car, by its model: (model name or null, [open, city, traffic]).
+  Future<(String?, List<num>)> carMileage(String make, String model, String fuel) async {
+    final j = _map(await get('/cars/mileage', {'make': make, 'model': model, 'fuel': fuel}));
+    final m = (j['mileage'] as Map?) ?? const {};
+    return (j['match'] as String?, [m['smooth'] as num? ?? 0, m['city'] as num? ?? 0, m['traffic'] as num? ?? 0]);
+  }
+
   Future<User> saveVehicle(Map<String, dynamic> v) async => User.fromJson(_map(await put('/me/vehicle', v)));
   Future<void> deleteAccount() => delete('/me');
 
