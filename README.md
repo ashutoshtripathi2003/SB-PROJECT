@@ -350,6 +350,8 @@ iPhone notifications additionally need an Apple developer account (APNs key); An
 
 The app runs as **one server** that serves the website and the API together. The database is a single file, so it needs a persistent disk.
 
+**Free, always on (recommended): Oracle Cloud.** A free Oracle Cloud server runs RideSync 24/7 with a fixed `https://` link. Follow **[deploy/oracle/README.md](deploy/oracle/README.md)**: create the free server, then double-click **`oracle.bat`**. It copies your settings and database and sets up HTTPS, auto-restart and nightly backups.
+
 **Render (simplest):** push this repo to GitHub. In Render, choose **New → Blueprint** and pick the repo; `render.yaml` sets everything up, including a 1 GB disk. Enter `PUBLIC_URL`, the Microsoft values and the SMTP values when Render asks. Then add the live callback URL to your Microsoft app's Redirect URIs.
 
 **Any Docker host** (Railway, Fly.io, a VPS):
