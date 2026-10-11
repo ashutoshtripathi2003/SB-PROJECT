@@ -267,6 +267,8 @@ class _OverviewTab extends StatelessWidget {
           ('Refunds', '${s.money.refunds}', false),
           ('CO₂ saved', '${s.money.co2Kg} kg', false),
         ]),
+        const SizedBox(height: 12),
+        const _FuelPrices(),
       ];
     }
     return RefreshIndicator(
@@ -278,6 +280,81 @@ class _OverviewTab extends StatelessWidget {
 
   Widget _tileRow(Widget a, Widget b) => IntrinsicHeight(
         child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]),
+      );
+}
+
+/// Today's fuel prices, used to work out every new trip's cost (fair fares).
+class _FuelPrices extends StatefulWidget {
+  const _FuelPrices();
+  @override
+  State<_FuelPrices> createState() => _FuelPricesState();
+}
+
+class _FuelPricesState extends State<_FuelPrices> {
+  static const _fuels = [('petrol', 'Petrol', '₹/litre'), ('diesel', 'Diesel', '₹/litre'), ('cng', 'CNG', '₹/kg'), ('ev', 'Electric', '₹/kWh')];
+  final Map<String, TextEditingController> _c = {for (final f in _fuels) f.$1: TextEditingController()};
+  bool _loaded = false, _saving = false;
+  String? _msg;
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<Session>().api.adminFuelPrices().then((p) {
+      if (!mounted) return;
+      for (final e in p.entries) {
+        _c[e.key]?.text = '${e.value}';
+      }
+      setState(() => _loaded = true);
+    }).catchError((_) {
+      if (mounted) setState(() => _msg = 'Couldn’t load fuel prices.');
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final c in _c.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final body = {for (final e in _c.entries) e.key: num.tryParse(e.value.text.trim()) ?? 0};
+    if (body.values.any((v) => v < 1 || v > 500)) return setState(() => _msg = 'Each price must be between ₹1 and ₹500.');
+    setState(() => (_saving = true, _msg = null));
+    try {
+      await context.read<Session>().api.setFuelPrices(body);
+      if (mounted) setState(() => _msg = 'Saved. New trips use these prices.');
+    } catch (e) {
+      if (mounted) setState(() => _msg = errorText(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Fuel prices', style: RS.heading(16)),
+            const SizedBox(height: 4),
+            const Text('Trip costs (and so every fare) use these. Update them when pump prices change.', style: TextStyle(color: RS.ink500, fontSize: 13)),
+            if (_loaded) ...[
+              for (final f in _fuels)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(children: [
+                    Expanded(child: Text('${f.$2}  ·  ${f.$3}', style: const TextStyle(color: RS.ink700))),
+                    SizedBox(width: 90, child: TextField(controller: _c[f.$1], textAlign: TextAlign.right, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(isDense: true))),
+                  ]),
+                ),
+              const SizedBox(height: 12),
+              LoadingButton(label: 'Save prices', loading: _saving, onPressed: _save),
+            ],
+            if (_msg != null) ...[const SizedBox(height: 8), Text(_msg!, style: const TextStyle(color: RS.ink500, fontSize: 13))],
+          ]),
+        ),
       );
 }
 

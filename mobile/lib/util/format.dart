@@ -76,16 +76,6 @@ String paymentLabel(String? method, String status) {
   };
 }
 
-/// Suggested cost-sharing contribution per seat (same formula as the server).
-int suggestFarePerSeat(double distanceKm, int seats, String fuel) {
-  final perKm = const {'petrol': 11, 'diesel': 10, 'cng': 7, 'ev': 5}[fuel] ?? 11;
-  final raw = distanceKm * perKm / (seats + 1);
-  final v = (raw / 10).round() * 10;
-  return v < 40 ? 40 : v;
-}
-
-int maxFareFor(int suggested) => ((suggested * 1.5) / 10).round() * 10;
-
 /// " · +8 min traffic" when the route has live traffic, else "".
 String trafficNote(RouteInfo r) => switch (r.traffic) {
       'heavy' || 'moderate' => ' · +${r.trafficDelayMin} min traffic',
