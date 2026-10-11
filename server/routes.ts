@@ -542,6 +542,7 @@ api.get(
     if (!vehicle) throw new HttpError(404, 'This ride is no longer available.')
     const mine = one(`SELECT * FROM bookings WHERE ride_id = ? AND rider_id = ? ORDER BY created_at DESC LIMIT 1`, ride.id, meId(req))
     const out: RideDetail = { ride, driver: publicUser(ride.driverId), vehicle, myBooking: mine ? toBooking(mine) : undefined }
+    readAbout(meId(req), [`/drive/${ride.id}`, `/ride/${ride.id}`])
     if (ride.driverId === meId(req)) {
       out.bookings = all(`SELECT * FROM bookings WHERE ride_id = ? ORDER BY created_at`, ride.id).map((b) => {
         const bk = toBooking(b)
@@ -823,6 +824,7 @@ api.get(
   requireOnboarded,
   h((req) => {
     const { b, r, role } = bookingAccess(param(req, 'id'), meId(req))
+    readAbout(meId(req), bookingLinks(String(b.id)))
     const booking = toBooking(b)
     const showContact = HOLDING.includes(booking.status) && booking.status !== 'completed'
     const driverRow = one(`SELECT * FROM users WHERE id = ?`, r.driver_id)
@@ -1293,6 +1295,7 @@ api.get(
   requireOnboarded,
   h((req) => {
     bookingAccess(param(req, 'id'), meId(req))
+    readAbout(meId(req), bookingLinks(param(req, 'id')))
     return all(`SELECT * FROM messages WHERE booking_id = ? ORDER BY created_at LIMIT 500`, param(req, 'id')).map((m) => ({
       id: String(m.id),
       threadId: String(m.booking_id),
@@ -1320,6 +1323,17 @@ api.post(
 )
 
 /* ---- Notifications --------------------------------------------------------- */
+
+/**
+ * Opening a trip, chat or ride marks the notifications about it as read (like WhatsApp), so the
+ * Inbox badge only counts things not seen yet. Badges refresh only when something changed.
+ */
+function readAbout(userId: string, links: string[]) {
+  const changed = run(`UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0 AND link IN (${links.map(() => '?').join(',')})`, userId, ...links).changes
+  if (Number(changed) > 0) sync([userId])
+}
+const bookingLinks = (id: string) => ['trip', 'live', 'pay', 'chat'].map((p) => `/${p}/${id}`)
+
 
 api.get(
   '/notifications',

@@ -33,6 +33,13 @@ export function Notifications() {
   const list = q.data ?? []
   const unread = list.filter((n) => !n.read).length
   const [perm, setPerm] = useState(notificationPermission())
+  // Opening this page counts as reading it (like Uber / Instagram), so the badge clears.
+  const seen = useRef(false)
+  useEffect(() => {
+    if (seen.current || unread === 0) return
+    seen.current = true
+    void notifications.readAll()
+  }, [unread])
 
   const today = list.filter((n) => Date.now() - +new Date(n.createdAt) < 86_400_000)
   const earlier = list.filter((n) => Date.now() - +new Date(n.createdAt) >= 86_400_000)
