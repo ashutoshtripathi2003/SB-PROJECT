@@ -59,7 +59,19 @@ export function userStats(userId: string) {
 
 export function vehicleFor(userId: string): Vehicle | undefined {
   const v = one(`SELECT * FROM vehicles WHERE user_id = ?`, userId)
-  return v ? { id: String(v.id), make: String(v.make), model: String(v.model), color: String(v.color), plate: String(v.plate), seats: Number(v.seats), fuel: v.fuel as Vehicle['fuel'] } : undefined
+  if (!v) return undefined
+  const m = (x: unknown) => (x == null ? undefined : Number(x))
+  const mileage = { smooth: m(v.mileage_smooth), city: m(v.mileage_city), traffic: m(v.mileage_traffic) }
+  return {
+    id: String(v.id),
+    make: String(v.make),
+    model: String(v.model),
+    color: String(v.color),
+    plate: String(v.plate),
+    seats: Number(v.seats),
+    fuel: v.fuel as Vehicle['fuel'],
+    ...(mileage.smooth || mileage.city || mileage.traffic ? { mileage } : {}),
+  }
 }
 
 export function getUserRow(userId: string) {
@@ -136,6 +148,9 @@ export function toRide(r: Row, opts: { location?: boolean } = {}): Ride {
     route: json(r.route, []),
     driverLocation: opts.location ? json(r.driver_location, undefined) : undefined,
     womenOnly: Number(r.women_only) ? true : undefined,
+    ...(r.fare_mode === 'share'
+      ? { fareMode: 'share' as const, costTotal: Number(r.cost_final ?? r.cost_total), costSummary: json<{ summary?: string }>(r.cost_detail, {}).summary }
+      : {}),
   }
 }
 
@@ -148,6 +163,9 @@ export function toBooking(b: Row): Booking {
     drop: json<Place>(b.drop_place, {} as Place),
     seats: Number(b.seats),
     fare: Number(b.fare),
+    ...(b.fare_max != null ? { fareMax: Number(b.fare_max), fareFinal: !!Number(b.fare_final) } : {}),
+    ...(b.paid_amount != null ? { paidAmount: Number(b.paid_amount) } : {}),
+    ...(Number(b.settle_due) ? { settleDue: Number(b.settle_due) } : {}),
     status: b.status as BookingStatus,
     matchScore: Number(b.match_score),
     createdAt: String(b.created_at),

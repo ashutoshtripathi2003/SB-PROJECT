@@ -2,7 +2,7 @@ import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
 import { haversineKm, projectOnPolyline } from '../src/lib/geo'
-import { desiredTime, scoreRide, suggestFarePerSeat } from '../src/lib/matching'
+import { desiredTime, scoreRide } from '../src/lib/matching'
 import type {
   BookingDetail,
   DriverLocation,
@@ -50,6 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
+import { DEFAULT_MILEAGE, fuelPrices, maxFare, perPersonIfFull, setFuelPrices, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -109,7 +110,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured() })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', fuelPrices: fuelPrices(), defaultMileage: DEFAULT_MILEAGE } })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -276,6 +277,8 @@ api.patch(
   }),
 )
 
+const MileageZ = z.number().min(1, 'Mileage looks too low').max(60, 'Mileage looks too high').nullable()
+
 api.put(
   '/me/vehicle',
   requireUser,
@@ -288,14 +291,21 @@ api.put(
         plate: z.string().trim().max(20),
         seats: z.number().int().min(1).max(7),
         fuel: z.enum(['petrol', 'diesel', 'cng', 'ev']),
+        // The car's own mileage (km per litre / kg / kWh) on open roads, in the city and in heavy traffic.
+        mileage: z
+          .object({ smooth: MileageZ, city: MileageZ, traffic: MileageZ })
+          .partial()
+          .optional(),
       }),
       req.body,
     )
     const err = validatePlate(v.plate)
     if (err) throw new HttpError(400, err, 'plate')
     const existing = vehicleFor(meId(req))
-    if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, meId(req))
-    else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel)
+    const m = v.mileage ?? {}
+    const mil = [m.smooth ?? null, m.city ?? null, m.traffic ?? null]
+    if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=?, mileage_smooth=?, mileage_city=?, mileage_traffic=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, ...mil, meId(req))
+    else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel, mileage_smooth, mileage_city, mileage_traffic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, ...mil)
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),
@@ -477,7 +487,127 @@ function scoreFor(rideRowData: Row, query: SearchQuery, userId: string, hist = r
   const vehicle = vehicleFor(ride.driverId)
   if (!driverRow || !vehicle) return null
   const driver = { ...publicUser(driverRow), gender: driverRow.gender as never }
-  return scoreRide({ query, ride, route: { coords: ride.route, distanceKm: ride.distanceKm, durationMin: ride.durationMin }, driver, vehicle, history: hist.bookings, rides: hist.rides })
+  const m = scoreRide({ query, ride, route: { coords: ride.route, distanceKm: ride.distanceKm, durationMin: ride.durationMin }, driver, vehicle, history: hist.bookings, rides: hist.rides })
+  if (m && rideRowData.fare_mode === 'share') {
+    // Fair fares: this rider's equal share if they joined now, and the most it can cost (per seat).
+    const mine = one(`SELECT id FROM bookings WHERE ride_id = ? AND rider_id = ? AND status IN ('pending','accepted','confirmed')`, ride.id, userId)
+    const q = quoteShare(rideRowData, riderKm(rideRowData, m.shareFraction), query.seats, mine ? String(mine.id) : undefined)
+    m.fare = Math.round(q.fare / query.seats)
+    m.fareMax = Math.round(q.max / query.seats)
+  }
+  return m
+}
+
+/* ---- Fair fares (server/fare.ts) -------------------------------------------- */
+
+/** Bookings that share the car's cost: accepted and confirmed riders (before the trip starts). */
+function fareRiders(rideId: string, exceptBookingId?: string): FareRider[] {
+  return all(`SELECT id, share_km, seats, fare_max FROM bookings WHERE ride_id = ? AND status IN ('accepted','confirmed')`, rideId)
+    .filter((b) => String(b.id) !== exceptBookingId)
+    .map((b) => ({ id: String(b.id), km: Number(b.share_km ?? 0), seats: Number(b.seats), max: b.fare_max == null ? undefined : Number(b.fare_max) }))
+}
+
+/** Road km of the driver's route this rider travels. */
+const riderKm = (r: Row, fraction = 1) => Math.max(0.5, Math.round(Number(r.distance_km) * Math.min(1, Math.max(0, fraction)) * 10) / 10)
+
+/** A rider's share (total for their seats) if they joined now, and the most it can ever cost them. */
+function quoteShare(r: Row, km: number, seats: number, exceptBookingId?: string) {
+  const cost = Number(r.cost_total)
+  const L = Number(r.distance_km)
+  const max = maxFare(cost, L, km, seats)
+  const fare = splitCost(cost, L, [...fareRiders(String(r.id), exceptBookingId), { id: '_quote', km, seats, max }]).get('_quote')!
+  return { fare, max }
+}
+
+/** After a rider joins or leaves (before the trip starts): everyone's current share, re-split equally. */
+function resplit(rideId: string) {
+  const r = rideRow(rideId)
+  if (r.fare_mode !== 'share' || r.status !== 'scheduled') return
+  const fares = splitCost(Number(r.cost_total), Number(r.distance_km), fareRiders(rideId))
+  for (const [id, fare] of fares) {
+    const b = bookingRow(id)
+    const before = Number(b.fare)
+    if (before === fare) continue
+    run(`UPDATE bookings SET fare = ?, updated_at = ? WHERE id = ?`, fare, nowIso(), id)
+    notify(
+      String(b.rider_id),
+      'payment',
+      fare < before ? `Your share went down to ${money(fare)}` : `Your share is now ${money(fare)}`,
+      `${fare < before ? 'Another rider joined, so the trip cost is split more ways' : 'A rider left, so the cost is split fewer ways'}. It is fixed when the driver starts the trip and never goes above ${money(Number(b.fare_max))}.`,
+      `/trip/${id}`,
+    )
+  }
+  // Requests not answered yet: their share if accepted now.
+  for (const b of all(`SELECT * FROM bookings WHERE ride_id = ? AND status = 'pending'`, rideId)) {
+    const q = quoteShare(r, Number(b.share_km), Number(b.seats), String(b.id))
+    if (Number(b.fare) !== q.fare) run(`UPDATE bookings SET fare = ? WHERE id = ?`, q.fare, b.id)
+  }
+}
+
+/** The trip's cost with the live traffic right now (for the final split at the start). */
+async function liveTripCost(r: Row): Promise<TripCost | null> {
+  try {
+    const route = await getRoute(JSON.parse(String(r.origin)), JSON.parse(String(r.destination)), { departAt: new Date() })
+    const v = vehicleFor(String(r.driver_id))
+    return v ? tripCost(v.fuel, v.mileage ?? {}, route) : null
+  } catch {
+    return null
+  }
+}
+
+/** What a payment made now must cover: the final share, or before the start the guaranteed maximum. */
+const chargeAmount = (b: Row) => (Number(b.fare_final) || b.fare_max == null ? Number(b.fare) : Number(b.fare_max))
+
+const onlineAdjustments: { bookingId: string; amount: number }[] = []
+
+/**
+ * Fixes a booking's share and settles what was already paid: wallet overpayments go straight back
+ * to the wallet, online ones are partly refunded, UPI ones show what the driver returns (or the rider
+ * still owes).
+ */
+function settleBooking(b: Row, final: number) {
+  run(`UPDATE bookings SET fare = ?, fare_final = 1, updated_at = ? WHERE id = ?`, final, nowIso(), b.id)
+  const paid = b.paid_amount == null ? null : Number(b.paid_amount)
+  const r = rideRow(String(b.ride_id))
+  if (paid == null || paid === final) {
+    notify(String(b.rider_id), 'payment', `Final fare: ${money(final)}`, `Your equal share of the trip cost, fixed now that the trip has started.${paid == null ? ' Pay the driver as agreed.' : ''}`, `/trip/${b.id}`)
+    return
+  }
+  const diff = paid - final
+  if (diff > 0 && b.payment_method === 'wallet' && b.payment_status === 'paid_online') {
+    walletEntry(String(b.rider_id), 'refund', diff, 'Fare adjusted: final share lower than the maximum', String(b.id))
+    walletEntry(String(r.driver_id), 'refund', -diff, 'Fare adjusted at trip start', String(b.id))
+    run(`UPDATE bookings SET paid_amount = ? WHERE id = ?`, final, b.id)
+    notify(String(b.rider_id), 'payment', `Final fare ${money(final)} · ${money(diff)} back to your wallet`, `You paid the maximum of ${money(paid)}; the difference is back in your RideSync Wallet.`, `/trip/${b.id}`)
+  } else if (diff > 0 && b.payment_status === 'paid_online' && b.gateway_payment_id) {
+    onlineAdjustments.push({ bookingId: String(b.id), amount: diff })
+    notify(String(b.rider_id), 'payment', `Final fare ${money(final)} · ${money(diff)} being refunded`, `You paid the maximum of ${money(paid)}; ${money(diff)} goes back to your original payment method.`, `/trip/${b.id}`)
+  } else {
+    // Paid directly (UPI): settle between the two of them.
+    run(`UPDATE bookings SET settle_due = ? WHERE id = ?`, final - paid, b.id)
+    const name = first(String(one(`SELECT name FROM users WHERE id = ?`, b.rider_id)?.name ?? 'Rider'))
+    if (diff > 0) {
+      notify(String(b.rider_id), 'payment', `Final fare ${money(final)} · driver returns ${money(diff)}`, `You paid ${money(paid)} by UPI; the driver returns ${money(diff)} to you.`, `/trip/${b.id}`)
+      notify(String(r.driver_id), 'payment', `Return ${money(diff)} to ${name}`, `${name} paid ${money(paid)}; their final share is ${money(final)}.`, `/drive/${r.id}`)
+    } else {
+      notify(String(b.rider_id), 'payment', `Final fare ${money(final)} · pay ${money(-diff)} more`, `You paid ${money(paid)}; please pay the driver the remaining ${money(-diff)}.`, `/trip/${b.id}`)
+    }
+  }
+}
+
+async function flushOnlineAdjustments() {
+  for (const a of onlineAdjustments.splice(0)) {
+    const b = one(`SELECT * FROM bookings WHERE id = ?`, a.bookingId)
+    if (!b) continue
+    try {
+      await refundPayment(String(b.gateway_payment_id), a.amount, { booking: a.bookingId, reason: 'fare adjustment' })
+      run(`UPDATE bookings SET paid_amount = ? WHERE id = ?`, Number(b.fare), b.id)
+    } catch (e) {
+      console.error('[ridesync] fare adjustment refund failed', a.bookingId, e)
+      run(`UPDATE bookings SET settle_due = ? WHERE id = ?`, -a.amount, b.id)
+    }
+    sync([String(b.rider_id)])
+  }
 }
 
 api.post(
@@ -570,6 +700,28 @@ api.post(
 
 /* ---- Rides: offering ------------------------------------------------------ */
 
+/** Driver's preview before offering: the trip's cost with their car and the traffic forecast, and each share. */
+api.post(
+  '/rides/cost-preview',
+  requireOnboarded,
+  h(async (req) => {
+    const p = parse(z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(7) }), req.body)
+    const vehicle = vehicleFor(meId(req))
+    if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
+    const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
+    const cost = tripCost(vehicle.fuel, vehicle.mileage ?? {}, route)
+    return {
+      cost,
+      shares: shareTable(cost.total, p.seats),
+      perPersonIfFull: perPersonIfFull(cost.total, p.seats),
+      distanceKm: Math.round(route.distanceKm * 10) / 10,
+      durationMin: route.durationMin,
+      trafficDelayMin: route.trafficDelayMin ?? 0,
+      ownMileage: !!vehicle.mileage,
+    }
+  }),
+)
+
 api.post(
   '/rides',
   requireOnboarded,
@@ -580,7 +732,7 @@ api.post(
         destination: PlaceZ,
         departAt: z.string().datetime(),
         seats: z.number().int().min(1).max(7),
-        farePerSeat: z.number().int().min(0).max(5000),
+        farePerSeat: z.number().int().min(0).max(5000).optional(),
         maxDetourKm: z.number().min(0).max(10),
         preferences: z.array(PrefZ).max(7).default([]),
         note: z.string().max(200).optional(),
@@ -604,21 +756,22 @@ api.post(
     if (clash) throw new HttpError(409, 'You already have a ride within an hour of this time.', 'time')
 
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
-    const suggested = suggestFarePerSeat(route.distanceKm, p.seats, vehicle.fuel)
-    const cap = Math.round((suggested * 1.5) / 10) * 10
-    if (p.farePerSeat > cap) throw new HttpError(400, `RideSync is for cost-sharing — the maximum for this trip is ${money(cap)} per seat.`, 'fare')
+    // Fair fares: the trip's real cost with this car and the traffic forecast for the departure time.
+    // (A farePerSeat sent by older apps is ignored: riders pay an equal share of this cost.)
+    const cost = tripCost(vehicle.fuel, vehicle.mileage ?? {}, route)
+    const farePerSeat = perPersonIfFull(cost.total, p.seats)
 
     const id = newId('r')
     run(
-      `INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, preferences, vehicle_id, note, status, route, distance_km, duration_min, women_only, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?)`,
+      `INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, preferences, vehicle_id, note, status, route, distance_km, duration_min, women_only, fare_mode, cost_total, cost_detail, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, 'share', ?, ?, ?)`,
       id,
       meId(req),
       JSON.stringify(p.origin),
       JSON.stringify(p.destination),
       depart.toISOString(),
       p.seats,
-      p.farePerSeat,
+      farePerSeat,
       p.maxDetourKm,
       JSON.stringify(p.preferences),
       vehicle.id,
@@ -627,6 +780,8 @@ api.post(
       Math.round(route.distanceKm * 10) / 10,
       route.durationMin,
       p.womenOnly ? 1 : 0,
+      cost.total,
+      JSON.stringify(cost),
       nowIso(),
     )
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
@@ -660,17 +815,20 @@ async function flushRefunds() {
         return
       }
       try {
-        const refund = await refundPayment(String(b.gateway_payment_id), Number(b.fare), { booking: id })
+        const refund = await refundPayment(String(b.gateway_payment_id), paidOf(b), { booking: id })
         run(`UPDATE bookings SET payment_status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?`, refund.id, nowIso(), id)
-        notify(String(b.rider_id), 'payment', 'Refund started', `${money(Number(b.fare))} is on its way back to your original payment method (usually 5–7 working days).`, `/trip/${id}`)
+        notify(String(b.rider_id), 'payment', 'Refund started', `${money(paidOf(b))} is on its way back to your original payment method (usually 5–7 working days).`, `/trip/${id}`)
       } catch (e) {
         console.error('[ridesync] refund failed', id, e)
-        notify(String(b.rider_id), 'payment', 'Refund pending', `We couldn’t start your ${money(Number(b.fare))} refund automatically. We’ll retry — contact support if it doesn’t arrive.`, `/trip/${id}`)
+        notify(String(b.rider_id), 'payment', 'Refund pending', `We couldn’t start your ${money(paidOf(b))} refund automatically. We’ll retry — contact support if it doesn’t arrive.`, `/trip/${id}`)
       }
       sync([String(b.rider_id)])
     }),
   )
 }
+
+/** What the rider actually paid (the maximum, for a fair-share ride paid before the start). */
+const paidOf = (b: Row) => (b.paid_amount == null ? Number(b.fare) : Number(b.paid_amount))
 
 const paidDirectly = (b: Row) => b.payment_status === 'marked_paid' || b.payment_status === 'received'
 
@@ -709,13 +867,22 @@ api.post(
 api.post(
   '/rides/:id/start',
   requireOnboarded,
-  h((req) => {
+  h(async (req) => {
     const r = assertDriver(param(req, 'id'), meId(req))
     if (r.status !== 'scheduled') throw new HttpError(409, 'This ride has already started or ended.')
+    if (!one(`SELECT id FROM bookings WHERE ride_id = ? AND status IN ('accepted','confirmed')`, r.id)) throw new HttpError(409, 'No confirmed riders yet. Start the ride once someone has booked.')
+    // Fair fares: the final split uses the live traffic now and exactly who is in the car.
+    const live = r.fare_mode === 'share' ? await liveTripCost(r) : null
     const riders = all(`SELECT * FROM bookings WHERE ride_id = ? AND status IN ('accepted','confirmed')`, r.id)
     if (!riders.length) throw new HttpError(409, 'No confirmed riders yet. Start the ride once someone has booked.')
     const driverName = first(String(me(req).name))
     tx(() => {
+      if (r.fare_mode === 'share') {
+        const total = live?.total ?? Number(r.cost_total)
+        if (live) run(`UPDATE rides SET cost_final = ?, cost_detail = ? WHERE id = ?`, total, JSON.stringify(live), r.id)
+        const fares = splitCost(total, Number(r.distance_km), fareRiders(String(r.id)))
+        for (const b of riders) settleBooking(b, fares.get(String(b.id)) ?? Number(b.fare))
+      }
       run(`UPDATE rides SET status = 'in_progress', started_at = ? WHERE id = ?`, nowIso(), r.id)
       for (const b of riders) {
         run(`UPDATE bookings SET status = 'driver_arriving', updated_at = ? WHERE id = ?`, nowIso(), b.id)
@@ -726,6 +893,7 @@ api.post(
         notify(String(b.rider_id), 'rejected', `${driverName} has already left`, 'This ride started before your request was answered. Find another match.', `/trip/${b.id}`)
       }
     })
+    await flushOnlineAdjustments()
     sync(rideParticipants(String(r.id)))
     broadcastSync()
   }),
@@ -797,19 +965,26 @@ api.post(
     if (!match) throw new HttpError(409, 'This ride doesn’t pass close enough to your pickup or destination.')
     const id = newId('b')
     const now = nowIso()
+    // Fair fares: the km this rider shares, their current equal share and the most it can cost.
+    const share = r.fare_mode === 'share'
+    const km = riderKm(r, match.shareFraction)
+    const quote = share ? quoteShare(r, km, query.seats) : null
     run(
-      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?)`,
+      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, fare_max, share_km, fare_final, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?, ?, ?, ?)`,
       id,
       r.id,
       meId(req),
       JSON.stringify(query.pickup),
       JSON.stringify(query.drop),
       query.seats,
-      match.fare * query.seats,
+      quote ? quote.fare : match.fare * query.seats,
       match.score,
       p.message?.trim() || null,
       newPin(),
+      quote ? quote.max : null,
+      share ? km : null,
+      share ? 0 : 1,
       now,
       now,
     )
@@ -859,8 +1034,19 @@ api.post(
       if (accept) {
         if (Number(r.seats_total) - seatsBooked(String(r.id)) < Number(b.seats)) throw new HttpError(409, 'Not enough seats left for this request.')
         run(`UPDATE bookings SET status = 'accepted', updated_at = ? WHERE id = ?`, nowIso(), b.id)
+        // Fair fares: one more person shares the cost, so everyone's share is re-split.
+        resplit(String(r.id))
+        const nb = bookingRow(String(b.id))
         systemMessage(String(b.id), `${name} accepted the request.`)
-        notify(String(b.rider_id), 'accepted', `${name} accepted your request`, `Choose how you’ll pay ${money(Number(b.fare))} to confirm your seat.`, `/trip/${b.id}`)
+        notify(
+          String(b.rider_id),
+          'accepted',
+          `${name} accepted your request`,
+          nb.fare_max != null && !Number(nb.fare_final)
+            ? `Your share is ${money(Number(nb.fare))} now and never more than ${money(Number(nb.fare_max))}; it drops if more riders join. Choose how you’ll pay to confirm your seat.`
+            : `Choose how you’ll pay ${money(Number(nb.fare))} to confirm your seat.`,
+          `/trip/${b.id}`,
+        )
         // Requests that no longer fit are closed now, so those riders can pick another ride instead of waiting.
         const left = Number(r.seats_total) - seatsBooked(String(r.id))
         for (const o of all(`SELECT * FROM bookings WHERE ride_id = ? AND status = 'pending' AND seats > ?`, r.id, left)) {
@@ -891,11 +1077,13 @@ api.post(
       throw new HttpError(409, 'The driver hasn’t added a UPI ID. Choose cash, or message them.')
     const status = p.method === 'upi' ? 'marked_paid' : 'unpaid'
     run(
-      `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = ?, payment_status = CASE WHEN payment_status = 'received' THEN 'received' ELSE ? END, payment_ref = ?, paid_at = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = ?, payment_status = CASE WHEN payment_status = 'received' THEN 'received' ELSE ? END, payment_ref = ?, paid_at = ?, paid_amount = ?, updated_at = ? WHERE id = ?`,
       p.method,
       status,
       p.reference || null,
       p.method === 'upi' ? nowIso() : null,
+      // UPI pays the current share; any difference is settled with the driver when the trip starts.
+      p.method === 'upi' ? Number(b.fare) : null,
       nowIso(),
       b.id,
     )
@@ -917,7 +1105,7 @@ function walletEntry(userId: string, kind: string, amount: number, note: string,
 /** Cancelled wallet-paid ride: money goes straight back to the rider's wallet. */
 function refundToWallet(b: Row) {
   const r = rideRow(String(b.ride_id))
-  const fare = Number(b.fare)
+  const fare = paidOf(b)
   tx(() => {
     run(`UPDATE bookings SET payment_status = 'refunded', refund_id = ?, updated_at = ? WHERE id = ?`, `wallet`, nowIso(), b.id)
     walletEntry(String(b.rider_id), 'refund', fare, 'Refund · ride cancelled', String(b.id))
@@ -996,16 +1184,18 @@ api.post(
     if (role !== 'rider') throw new HttpError(403, 'Only the rider can pay.')
     if (b.payment_status === 'paid_online') throw new HttpError(409, 'This ride is already paid.')
     if (!['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(String(b.status))) throw new HttpError(409, 'This booking can’t be paid right now.')
-    const fare = Number(b.fare)
+    // A fair-share ride paid before the start takes the guaranteed maximum; the difference comes back at the start.
+    const fare = chargeAmount(b)
     tx(() => {
       if (walletBalance(meId(req)) < fare) throw new HttpError(402, `Not enough money in your wallet. Add at least ${money(fare - walletBalance(meId(req)))}.`)
       const rider = first(String(me(req).name))
       walletEntry(meId(req), 'ride', -fare, `Ride with ${first(String(one(`SELECT name FROM users WHERE id = ?`, r.driver_id)?.name ?? 'driver'))}`, String(b.id))
       walletEntry(String(r.driver_id), 'earning', fare, `Ride fare from ${rider}`, String(b.id))
       run(
-        `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = 'wallet', payment_status = 'paid_online', gateway_payment_id = ?, payment_ref = 'wallet', paid_at = ?, updated_at = ? WHERE id = ?`,
+        `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = 'wallet', payment_status = 'paid_online', gateway_payment_id = ?, payment_ref = 'wallet', paid_at = ?, paid_amount = ?, updated_at = ? WHERE id = ?`,
         `wallet:${b.id}`,
         nowIso(),
+        fare,
         nowIso(),
         b.id,
       )
@@ -1024,21 +1214,28 @@ function markPaidOnline(bookingId: string, orderId: string, paymentId: string) {
   const b = bookingRow(bookingId)
   if (b.payment_status === 'paid_online' || b.payment_status === 'refunded') return false
   const r = rideRow(String(b.ride_id))
+  const paid = b.order_amount == null ? Number(b.fare) : Number(b.order_amount)
   run(
     `UPDATE bookings SET status = CASE WHEN status = 'accepted' THEN 'confirmed' ELSE status END, payment_method = 'online', payment_status = 'paid_online',
-       gateway_order_id = ?, gateway_payment_id = ?, payment_ref = ?, paid_at = ?, updated_at = ? WHERE id = ?`,
+       gateway_order_id = ?, gateway_payment_id = ?, payment_ref = ?, paid_at = ?, paid_amount = ?, updated_at = ? WHERE id = ?`,
     orderId,
     paymentId,
     paymentId,
     nowIso(),
+    paid,
     nowIso(),
     bookingId,
   )
   const rider = first(String(one(`SELECT name FROM users WHERE id = ?`, b.rider_id)?.name ?? 'Rider'))
-  systemMessage(bookingId, `${rider} paid ${money(Number(b.fare))} online.`)
-  notify(String(r.driver_id), 'payment', `${rider} paid online`, `${money(Number(b.fare))} received through RideSync for this ride.`, `/drive/${r.id}`)
-  notify(String(b.rider_id), 'payment', 'Payment successful', `${money(Number(b.fare))} paid · seat confirmed.`, `/trip/${bookingId}`)
+  systemMessage(bookingId, `${rider} paid ${money(paid)} online.`)
+  notify(String(r.driver_id), 'payment', `${rider} paid online`, `${money(paid)} received through RideSync for this ride.`, `/drive/${r.id}`)
+  notify(String(b.rider_id), 'payment', 'Payment successful', `${money(paid)} paid · seat confirmed.`, `/trip/${bookingId}`)
   sync([String(r.driver_id), String(b.rider_id)])
+  // Paid the maximum but the trip already started with a lower final share: refund the difference.
+  if (Number(b.fare_final) && paid > Number(b.fare)) {
+    onlineAdjustments.push({ bookingId, amount: paid - Number(b.fare) })
+    void flushOnlineAdjustments()
+  }
   // A cancellation may have landed while the rider was paying: refund straight away.
   const after = bookingRow(bookingId)
   if (after.status === 'cancelled' || after.status === 'rejected') {
@@ -1057,8 +1254,9 @@ api.post(
     if (role !== 'rider') throw new HttpError(403, 'Only the rider can pay.')
     if (b.payment_status === 'paid_online') throw new HttpError(409, 'This ride is already paid.')
     if (!['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].includes(String(b.status))) throw new HttpError(409, 'This booking can’t be paid right now.')
-    const order = await createOrder(Number(b.fare), String(b.id), { booking: String(b.id), ride: String(r.id) })
-    run(`UPDATE bookings SET gateway_order_id = ? WHERE id = ?`, order.id, b.id)
+    const amount = chargeAmount(b)
+    const order = await createOrder(amount, String(b.id), { booking: String(b.id), ride: String(r.id) })
+    run(`UPDATE bookings SET gateway_order_id = ?, order_amount = ? WHERE id = ?`, order.id, amount, b.id)
     const driver = one(`SELECT name FROM users WHERE id = ?`, r.driver_id)
     return {
       keyId: env.razorpay.keyId,
@@ -1127,6 +1325,7 @@ api.post(
     if (!cancellable.includes(String(b.status))) throw new HttpError(409, 'This booking can’t be cancelled now.')
     run(`UPDATE bookings SET status = 'cancelled', cancelled_by = ?, cancel_reason = ?, updated_at = ? WHERE id = ?`, role, reason, nowIso(), b.id)
     scheduleRefund(b)
+    resplit(String(r.id))
     const direct = paidDirectly(b)
     const online = b.payment_status === 'paid_online'
     if (role === 'rider') {
@@ -1776,6 +1975,27 @@ api.get(
   h((req) => {
     requireAdmin(req)
     return { ...mlReport(), demo: demoCount(), assistant: assistantStats() }
+  }),
+)
+
+api.get(
+  '/admin/fuel-prices',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    return { prices: fuelPrices() }
+  }),
+)
+
+api.put(
+  '/admin/fuel-prices',
+  requireUser,
+  h((req) => {
+    requireAdmin(req)
+    const price = z.number().min(1).max(500)
+    const p = parse(z.object({ petrol: price, diesel: price, cng: price, ev: price }).partial(), req.body)
+    setFuelPrices(p)
+    return { prices: fuelPrices() }
   }),
 )
 

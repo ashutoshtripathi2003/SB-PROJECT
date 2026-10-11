@@ -188,6 +188,7 @@ export function scoreRide({ query, ride, route, driver, vehicle, history = [], r
     timeDiffMin,
     detourKm,
     fare,
+    shareFraction: clamp(sharedKm / lineKm, 0, 1),
     reasons,
     caveats,
     history: historyText,

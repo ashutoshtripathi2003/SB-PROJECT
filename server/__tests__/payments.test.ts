@@ -56,7 +56,9 @@ async function acceptedBooking(tag: string) {
   const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
   const booking = (await rider.post('/api/bookings').set(H).send({ rideId: ride.id, query })).body
   await driver.post(`/api/bookings/${booking.id}/respond`).set(H).send({ accept: true })
-  return { driver, rider, ride, booking }
+  // Fair fares: paying before the trip starts takes the guaranteed maximum share.
+  const max = (await rider.get(`/api/bookings/${booking.id}`)).body.booking.fareMax as number
+  return { driver, rider, ride, booking, max }
 }
 
 const sign = (s: string, key: string) => createHmac('sha256', key).update(s).digest('hex')
@@ -70,11 +72,11 @@ describe('Razorpay online payments', () => {
 
   it('creates an order for the booking amount and confirms after signature verification', async () => {
     mockRazorpay()
-    const { rider, driver, booking } = await acceptedBooking('a')
+    const { rider, driver, booking, max } = await acceptedBooking('a')
     const order = await rider.post(`/api/bookings/${booking.id}/pay/online`).set(H).send({})
     expect(order.status).toBe(200)
-    expect(order.body).toMatchObject({ keyId: 'rzp_test_abc', amount: 8000, currency: 'INR' })
-    expect(calls[0].body).toMatchObject({ amount: 8000, currency: 'INR' })
+    expect(order.body).toMatchObject({ keyId: 'rzp_test_abc', amount: max * 100, currency: 'INR' })
+    expect(calls[0].body).toMatchObject({ amount: max * 100, currency: 'INR' })
     // Driver can't create the rider's order.
     expect((await driver.post(`/api/bookings/${booking.id}/pay/online`).set(H).send({})).status).toBe(403)
 
@@ -107,12 +109,12 @@ describe('Razorpay online payments', () => {
 
   it('refunds automatically when the driver cancels the ride', async () => {
     mockRazorpay()
-    const { rider, driver, ride, booking } = await acceptedBooking('c')
+    const { rider, driver, ride, booking, max } = await acceptedBooking('c')
     const order = (await rider.post(`/api/bookings/${booking.id}/pay/online`).set(H).send({})).body
     await rider.post(`/api/bookings/${booking.id}/pay/online/verify`).set(H).send({ razorpay_order_id: order.orderId, razorpay_payment_id: 'pay_c', razorpay_signature: sign(`${order.orderId}|pay_c`, 'secret123') })
     expect((await driver.post(`/api/rides/${ride.id}/cancel`).set(H).send({ reason: 'Car trouble' })).status).toBe(200)
     const refund = calls.find((c) => c.url.includes('/payments/pay_c/refund'))
-    expect(refund?.body).toMatchObject({ amount: 8000 })
+    expect(refund?.body).toMatchObject({ amount: max * 100 })
     expect((await rider.get(`/api/bookings/${booking.id}`)).body.booking).toMatchObject({ status: 'cancelled', paymentStatus: 'refunded' })
     expect((await rider.get('/api/notifications')).body.map((n: { title: string }) => n.title)).toContain('Refund started')
   })
@@ -140,7 +142,7 @@ describe('place search', () => {
 describe('RideSync Wallet', () => {
   it('adds money through Razorpay, pays a ride, and refunds to the wallet on cancel', async () => {
     mockRazorpay()
-    const { rider, driver, booking } = await acceptedBooking('w')
+    const { rider, driver, booking, max } = await acceptedBooking('w')
     expect((await rider.get('/api/wallet').set(H)).body).toMatchObject({ balance: 0, testMode: true, canTopUp: true })
 
     // Not enough money yet.
@@ -162,8 +164,8 @@ describe('RideSync Wallet', () => {
     expect((await rider.get('/api/wallet').set(H)).body.balance).toBe(200)
 
     const paid = await rider.post(`/api/bookings/${booking.id}/pay/wallet`).set(H)
-    expect(paid.body).toMatchObject({ ok: true, balance: 120 })
-    expect((await driver.get('/api/wallet').set(H)).body.balance).toBe(80)
+    expect(paid.body).toMatchObject({ ok: true, balance: 200 - max })
+    expect((await driver.get('/api/wallet').set(H)).body.balance).toBe(max)
     expect((await rider.post(`/api/bookings/${booking.id}/pay/wallet`).set(H)).status).toBe(409)
     const b = (await rider.get(`/api/bookings/${booking.id}`).set(H)).body.booking
     expect(b).toMatchObject({ status: 'confirmed', paymentMethod: 'wallet', paymentStatus: 'paid_online' })
