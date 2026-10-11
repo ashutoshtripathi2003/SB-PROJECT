@@ -1,5 +1,5 @@
 import request from 'supertest'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
 process.env.DEV_LOGIN = 'true'
@@ -57,6 +57,65 @@ describe('trip cost', () => {
   })
 })
 
+describe('the actual trip (GPS track)', () => {
+  // A point every 6 s along a straight line, at a given speed (km/h).
+  function drive(startMs: number, minutes: number, kmh: number, from = { lat: 19.0, lng: 72.85 }) {
+    const pts = []
+    for (let s = 0; s <= minutes * 60; s += 6) pts.push({ at: startMs + s * 1000, lat: from.lat + ((kmh * s) / 3600 / 111.2), lng: from.lng })
+    return pts
+  }
+
+  it('measures distance and turns slow minutes into heavy-traffic fuel', () => {
+    const cruise = fare.trackChunks(drive(0, 10, 45))
+    const km = cruise.reduce((s, c) => s + c.km, 0)
+    expect(km).toBeCloseTo(7.5, 0)
+    expect(cruise.length).toBe(10)
+    expect(fare.mileageAt(5, venue)).toBe(3.5)
+    expect(fare.mileageAt(30, venue)).toBe(11.5)
+    expect(fare.mileageAt(20, venue)).toBeCloseTo(7.5, 5)
+    // The same 2 km in a 20-minute jam burns far more than in 4 minutes of free driving.
+    const jam = fare.trackCost(fare.trackChunks(drive(0, 20, 6)), 'diesel', venue, [])
+    const free = fare.trackCost(fare.trackChunks(drive(0, 4, 30)), 'diesel', venue, [])
+    expect(jam.fuelUsed).toBeGreaterThan(free.fuelUsed * 2.5)
+    expect(jam.stuckMinutes).toBe(20)
+  })
+
+  it('counts idling when the car stands still (no points sent) and skips GPS jumps', () => {
+    const stopped = [{ at: 0, lat: 19, lng: 72.85 }, { at: 10 * 60_000, lat: 19.00001, lng: 72.85 }]
+    const c = fare.trackCost(fare.trackChunks(stopped), 'diesel', venue, [])
+    expect(c.fuelUsed).toBeCloseTo((0.7 * 10) / 60, 2) // 10 min idling at 0.7 L/h
+    const glitch = [{ at: 0, lat: 19, lng: 72.85 }, { at: 5000, lat: 19.5, lng: 72.85 }, { at: 10000, lat: 19.0001, lng: 72.85 }]
+    expect(fare.trackChunks(glitch).reduce((s, x) => s + x.km, 0)).toBeLessThan(0.05)
+  })
+
+  it('splits every minute among the people in the car then', () => {
+    // 30 min: A aboard the whole time, B only the second half. Driver alone for 10 min first.
+    const pts = drive(0, 40, 30)
+    const chunks = fare.trackChunks(pts)
+    const res = fare.trackCost(chunks, 'petrol', {}, [
+      { id: 'A', seats: 1, from: 10 * 60_000, to: 40 * 60_000 + 1 },
+      { id: 'B', seats: 1, from: 25 * 60_000, to: 40 * 60_000 + 1 },
+    ])
+    const A = res.riders.get('A')!
+    const B = res.riders.get('B')!
+    expect(A.km).toBeCloseTo(15, 0)
+    expect(B.km).toBeCloseTo(7.5, 0)
+    // Every minute is paid in full: riders' exact shares + the driver's = the whole cost.
+    expect(Math.abs(A.exact + B.exact + res.driverShare - res.total)).toBeLessThanOrEqual(2)
+    // A paid half of 15 min + a third of 15 min; B a third of 15 min.
+    expect(A.exact / B.exact).toBeCloseTo(2.5, 0)
+    // Never above a rider's maximum.
+    const capped = fare.trackCost(chunks, 'petrol', {}, [{ id: 'A', seats: 1, from: 0, to: Infinity, max: 40 }])
+    expect(capped.riders.get('A')!.fare).toBe(40)
+  })
+
+  it('learns the car from its trip computer', () => {
+    expect(fare.updatedFactor(null, 0, 3, 2.5)).toEqual({ factor: 1.2, samples: 1 })
+    expect(fare.updatedFactor(1.2, 1, 2, 2)).toEqual({ factor: 1.1, samples: 2 })
+    expect(fare.updatedFactor(null, 0, 10, 2).factor).toBe(1.6) // a typo can't wreck it
+  })
+})
+
 describe('equal split', () => {
   it('shares by person-km with the driver included', () => {
     // ₹420 trip, 25 km; A rides the whole way, B 11 km. Person-km: driver 25 + A 25 + B 11 = 61.
@@ -100,7 +159,7 @@ async function student(email: string, extra: Record<string, unknown> = {}) {
 }
 
 describe('fair fares end to end', () => {
-  it('saves mileage, previews the cost, re-splits as riders join, and settles at the start', async () => {
+  it('saves mileage, previews the cost, re-splits as riders join, and settles each rider at drop-off from the GPS track', async () => {
     const driver = await student('fare.driver@vit.edu.in', { upiId: 'driver@okaxis' })
     const car = await driver.put('/api/me/vehicle').set(H).send({ make: 'Hyundai', model: 'Venue', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'diesel', mileage: venue })
     expect(car.status).toBe(200)
@@ -140,16 +199,52 @@ describe('fair fares end to end', () => {
     expect((await a.get('/api/notifications')).body.map((n: { title: string }) => n.title)).toContain(`Your share went down to ₹${bookA.fare}`)
     await b.post(`/api/bookings/${bb.id}/pay`).set(H).send({ method: 'cash' })
 
-    // Start: shares are fixed; A paid more by UPI, so the driver returns the difference.
-    expect((await driver.post(`/api/rides/${ride.id}/start`).set(H).send({})).status).toBe(200)
-    const finalA = (await a.get(`/api/bookings/${ba.id}`)).body.booking
-    const finalB = (await b.get(`/api/bookings/${bb.id}`)).body.booking
-    expect(finalA.fareFinal).toBe(true)
-    expect(finalA.fare).toBe(finalB.fare)
-    expect(finalA.fare).toBeLessThanOrEqual(finalA.fareMax)
-    expect(finalA.settleDue).toBe(finalA.fare - paidA)
-    // The driver keeps (pays) their own equal share, nothing more.
-    expect(Math.abs(cost - finalA.fare - finalB.fare - cost / 3)).toBeLessThanOrEqual(10)
+    // The trip, as the driver's phone reports it: 20 minutes crawling through a jam, then moving.
+    // B gets off two-thirds of the way; A rides to the end. Shares are fixed at each drop-off.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const t0 = Date.now()
+      const at = (min: number) => vi.setSystemTime(t0 + min * 60_000)
+      const pos = (min: number) => {
+        const f = min <= 20 ? (0.15 * min) / 20 : 0.15 + (0.85 * (min - 20)) / 40
+        return { lat: campus.lat + (malad.lat - campus.lat) * f, lng: campus.lng + (malad.lng - campus.lng) * f }
+      }
+      expect((await driver.post(`/api/rides/${ride.id}/start`).set(H).send({})).status).toBe(200)
+      expect((await a.get(`/api/bookings/${ba.id}`)).body.booking.fareFinal).toBe(false)
+      for (const [rider, id] of [[a, ba.id], [b, bb.id]] as const) {
+        const pin = (await rider.get(`/api/bookings/${id}`)).body.ridePin
+        expect((await driver.post(`/api/bookings/${id}/picked-up`).set(H).send({ pin })).status).toBe(200)
+      }
+      for (let min = 0; min <= 60; min++) {
+        at(min)
+        await driver.post(`/api/rides/${ride.id}/location`).set(H).send(pos(min))
+        if (min === 40) expect((await driver.post(`/api/bookings/${bb.id}/dropped`).set(H).send({})).status).toBe(200)
+      }
+      const finalB = (await b.get(`/api/bookings/${bb.id}`)).body.booking
+      expect(finalB).toMatchObject({ fareFinal: true, fareDetail: { source: 'track' } })
+      expect(finalB.fareDetail.km).toBeGreaterThan(9)
+      expect(finalB.fareDetail.km).toBeLessThan(15)
+      expect((await driver.post(`/api/bookings/${ba.id}/dropped`).set(H).send({})).status).toBe(200)
+      // Trip computer: the Venue showed 7 km/L for this trip.
+      expect((await driver.post(`/api/rides/${ride.id}/complete`).set(H).send({ avgMileage: 7 })).status).toBe(200)
+
+      const finalA = (await a.get(`/api/bookings/${ba.id}`)).body.booking
+      expect(finalA).toMatchObject({ fareFinal: true, fareDetail: { source: 'track' } })
+      expect(finalA.fare).toBeGreaterThan(finalB.fare) // A rode further
+      expect(finalA.fare).toBeLessThanOrEqual(finalA.fareMax)
+      expect(finalA.settleDue).toBe(finalA.fare - paidA) // paid by UPI before the trip
+      expect(finalA.fareDetail.summary).toMatch(/crawling in traffic/)
+
+      // Equal split: the riders' exact shares plus the driver's add up to the trip's cost.
+      const done = (await driver.get(`/api/rides/${ride.id}`)).body.ride
+      expect(Math.abs(finalA.fareDetail.exact + finalB.fareDetail.exact + done.driverShare - done.costTotal)).toBeLessThanOrEqual(2)
+      // A 7 km/L trip computer reading teaches RideSync this car.
+      const me = (await driver.get('/api/me')).body
+      expect(me.vehicle.fuelSamples).toBe(1)
+      expect(me.vehicle.fuelFactor).toBeGreaterThan(0.6)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('lets the admin set fuel prices, which new trip costs use', async () => {

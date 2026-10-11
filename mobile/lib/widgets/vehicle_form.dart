@@ -120,6 +120,12 @@ class VehicleFormState extends State<VehicleForm> {
         const Text('Your car’s mileage (optional)', style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 4),
         const Text('Fuel burns faster in traffic, so the trip cost uses the right one for each part of the route. Blank ones use typical figures.', style: TextStyle(color: RS.ink500, fontSize: 12.5)),
+        if ((widget.initial?.fuelSamples ?? 0) > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+              'Learnt from ${widget.initial!.fuelSamples} trip${widget.initial!.fuelSamples == 1 ? '' : 's'}: your car uses ${(((widget.initial!.fuelFactor ?? 1) - 1).abs() * 100).round()}% ${(widget.initial!.fuelFactor ?? 1) >= 1 ? 'more' : 'less'} fuel than these figures say, and RideSync allows for it.',
+              style: const TextStyle(color: RS.success, fontSize: 12.5)),
+        ],
         const SizedBox(height: 10),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           for (final (i, c, key, label) in [(0, _smooth, 'm_smooth', 'Open roads'), (1, _city, 'm_city', 'City'), (2, _traffic, 'm_traffic', 'Traffic')]) ...[

@@ -167,6 +167,13 @@ addColumn('bookings', 'fare_final', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('bookings', 'paid_amount', 'INTEGER')
 addColumn('bookings', 'order_amount', 'INTEGER')
 addColumn('bookings', 'settle_due', 'INTEGER NOT NULL DEFAULT 0')
+addColumn('bookings', 'fare_detail', 'TEXT')
+addColumn('rides', 'driver_share', 'INTEGER')
+addColumn('vehicles', 'fuel_factor', 'REAL')
+addColumn('vehicles', 'fuel_samples', 'INTEGER NOT NULL DEFAULT 0')
+// The driver's GPS track during a ride: the real distance, speed and stops the final fare is worked out from.
+db.exec(`CREATE TABLE IF NOT EXISTS ride_track (ride_id TEXT NOT NULL, at INTEGER NOT NULL, lat REAL NOT NULL, lng REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS ride_track_ride ON ride_track(ride_id, at)`)
 addColumn('users', 'id_card', 'TEXT')
 addColumn('users', 'id_status', "TEXT NOT NULL DEFAULT 'none'")
 addColumn('users', 'id_note', 'TEXT')

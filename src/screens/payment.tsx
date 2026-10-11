@@ -131,7 +131,7 @@ export function Payment() {
             <h1 className="t-h1">Seat confirmed</h1>
             <p className="t-body t-muted">
               {done === 'wallet' ? `${money(payNowAmount(booking, 'wallet'))} paid from your RideSync Wallet. ${name} has been notified.` : done === 'online' ? `${money(payNowAmount(booking, 'online'))} paid online. ${name} has been notified.` : done === 'upi' ? `${name} has been told you paid ${money(booking.fare)} by UPI.` : `Pay ${name} your final share in cash at pickup.`}
-              {share && (done === 'wallet' || done === 'online') && ' Anything above your final share comes back to you when the trip starts.'}
+              {share && (done === 'wallet' || done === 'online') && ' Anything above your final share comes back to you when you’re dropped off.'}
             </p>
           </div>
           <div className="stack gap-2" style={{ marginTop: 16 }}>
@@ -181,10 +181,10 @@ export function Payment() {
               {share && (
                 <p className="t-sm t-muted" style={{ marginTop: 6 }}>
                   {method === 'wallet' || method === 'online'
-                    ? `Paying online holds the maximum. Your share drops if more riders join and is fixed with the live traffic when ${name} starts the trip; the difference comes straight back to you.`
+                    ? `Paying online holds the maximum. Your share drops if more riders join and is fixed when you’re dropped off, from the trip as it actually went; the difference comes straight back to you.`
                     : method === 'upi'
-                      ? `You pay your share now. It’s fixed when ${name} starts the trip; if it drops, ${name} returns the difference (it never goes above ${money(booking.fareMax!)}).`
-                      : `You pay your final share in cash, fixed when ${name} starts the trip (never above ${money(booking.fareMax!)}).`}
+                      ? `You pay your share now. It’s fixed when you’re dropped off; if it’s lower, ${name} returns the difference (it never goes above ${money(booking.fareMax!)}).`
+                      : `You pay your final share in cash, fixed when you’re dropped off (never above ${money(booking.fareMax!)}).`}
                 </p>
               )}
             </div>

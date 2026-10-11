@@ -528,7 +528,8 @@ export const rides = {
   publish: (o: OfferInput) => mutate(post<Ride>('/rides', o)),
   cancel: (id: string, reason: string) => mutate(post(`/rides/${id}/cancel`, { reason })),
   start: (id: string) => mutate(post(`/rides/${id}/start`)),
-  complete: (id: string) => mutate(post(`/rides/${id}/complete`)),
+  /** tripComputer: optional reading from the car (reset at the start) so RideSync learns how it really drives. */
+  complete: (id: string, tripComputer: { fuelUsed?: number; avgMileage?: number } = {}) => mutate(post(`/rides/${id}/complete`, tripComputer)),
   location: (id: string, lat: number, lng: number, heading: number | null) => post(`/rides/${id}/location`, { lat, lng, heading }),
 }
 
