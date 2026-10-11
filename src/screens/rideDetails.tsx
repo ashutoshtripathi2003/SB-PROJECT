@@ -304,7 +304,7 @@ export function RideDetails() {
             <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
               <span>
                 {ride.fareMode === 'share'
-                  ? `The trip costs about ${money(ride.costTotal ?? 0)} in fuel and wear${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. Your share drops as more riders join and is fixed when you’re dropped off, from the trip as it actually went (real km and traffic). Paid after ${firstName(driver.name)} accepts.`
+                  ? `The trip costs about ${money(ride.costTotal ?? 0)} in fuel and wear${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. Your share drops as more riders join and is fixed with the live traffic when the trip starts. Paid after ${firstName(driver.name)} accepts.`
                   : `You pay for the part of the route you share. Paid after ${firstName(driver.name)} accepts.`}
               </span>
             </div>

@@ -129,12 +129,6 @@ export function VehicleForm({
           ))}
         </div>
         <span className="field__hint">Fuel burns faster in traffic, so the trip cost uses the right one for each part of the route. Blank ones use typical figures.</span>
-        {initial?.fuelSamples ? (
-          <span className="field__hint t-success">
-            Learnt from {initial.fuelSamples} trip{initial.fuelSamples === 1 ? '' : 's'}: your car uses {Math.abs(Math.round(((initial.fuelFactor ?? 1) - 1) * 100))}%{' '}
-            {(initial.fuelFactor ?? 1) >= 1 ? 'more' : 'less'} fuel than these figures say, and RideSync allows for it.
-          </span>
-        ) : null}
       </div>
       <div className="stack gap-2" style={{ marginTop: 8 }}>
         <Button type="submit" size="lg" block loading={saving}>

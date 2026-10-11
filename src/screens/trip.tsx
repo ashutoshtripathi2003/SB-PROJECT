@@ -77,25 +77,13 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
         </div>
         {booking.fareMax != null && !booking.fareFinal && (
           <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
-            <span>Drops if more riders join · fixed at drop-off from the real trip · never more than {money(booking.fareMax)}</span>
+            <span>Drops if more riders join · fixed when the trip starts · never more than {money(booking.fareMax)}</span>
           </div>
         )}
-        {booking.fareFinal && booking.fareDetail?.source === 'track' ? (
+        {ride.costTotal != null && booking.fareMax != null && (
           <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
-            <span>
-              You rode {booking.fareDetail.km} km. From the driver’s GPS: {booking.fareDetail.summary}. Each minute’s cost was split equally among everyone in the car then.
-            </span>
+            <span>Trip cost {money(ride.costTotal)}{ride.costSummary ? ` — ${ride.costSummary}` : ''}</span>
           </div>
-        ) : (
-          ride.costTotal != null &&
-          booking.fareMax != null && (
-            <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
-              <span>
-                {booking.fareFinal ? 'Trip cost' : 'Estimated trip cost'} {money(ride.costTotal)}
-                {ride.costSummary ? ` — ${ride.costSummary}` : ''}
-              </span>
-            </div>
-          )
         )}
         <div className="bill__row">
           <span>Platform fee</span>

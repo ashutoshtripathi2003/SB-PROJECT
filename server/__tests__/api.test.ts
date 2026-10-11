@@ -149,9 +149,11 @@ describe('full ride between two devices', () => {
     expect(unreadAfter.map((n: { title: string }) => n.title)).toEqual(['Welcome to RideSync'])
     expect(msgs.body.filter((m: { system: boolean }) => !m.system).map((m: { text: string }) => m.text)).toEqual(['Hi!', 'See you at 5'])
 
-    // Live ride. Starting re-estimates with live traffic; the share is fixed at drop-off.
+    // Live ride. Starting fixes the share (never above the maximum).
     expect((await driver.post(`/api/rides/${rideId}/start`).set(H).send({})).status).toBe(200)
-    expect((await rider.get(`/api/bookings/${bookingId}`)).body.booking.fareFinal).toBe(false)
+    const fixed = (await rider.get(`/api/bookings/${bookingId}`)).body.booking
+    expect(fixed.fareFinal).toBe(true)
+    expect(fixed.fare).toBeLessThanOrEqual(fixed.fareMax)
     expect((await driver.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.03, lng: 72.87, heading: 10 })).status).toBe(200)
     const live = await rider.get(`/api/bookings/${bookingId}`)
     expect(live.body.booking.status).toBe('driver_arriving')
@@ -180,10 +182,6 @@ describe('full ride between two devices', () => {
     expect((await request(app).get('/api/share/nope')).status).toBe(404)
     expect((await driver.post(`/api/bookings/${bookingId}/payment-received`).set(H).send({})).status).toBe(200)
     expect((await driver.post(`/api/bookings/${bookingId}/dropped`).set(H).send({})).status).toBe(200)
-    // Too little GPS for this short test trip: the live estimate becomes the final share (never above the maximum).
-    const fixed = (await rider.get(`/api/bookings/${bookingId}`)).body.booking
-    expect(fixed).toMatchObject({ fareFinal: true, fareDetail: { source: 'estimate' } })
-    expect(fixed.fare).toBeLessThanOrEqual(fixed.fareMax)
     expect((await driver.post(`/api/rides/${rideId}/complete`).set(H).send({})).status).toBe(200)
 
     expect((await rider.post(`/api/bookings/${bookingId}/rate`).set(H).send({ stars: 5 })).status).toBe(200)

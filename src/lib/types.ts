@@ -28,9 +28,6 @@ export type Vehicle = {
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
   /** The driver's own mileage per condition (km per L / kg / kWh); blanks use typical values. */
   mileage?: { smooth?: number; city?: number; traffic?: number }
-  /** Learnt from the trip computer: real fuel ÷ RideSync's estimate, over [fuelSamples] trips. */
-  fuelFactor?: number
-  fuelSamples?: number
 }
 
 /** What other students can see about you. */
@@ -105,8 +102,6 @@ export type Ride = {
   /** Estimated cost of the whole trip (fuel + wear), and how it was worked out. */
   costTotal?: number
   costSummary?: string
-  /** After the trip: what the driver's own equal share came to. */
-  driverShare?: number
 }
 
 export type BookingStatus =
@@ -132,13 +127,11 @@ export type Booking = {
   pickup: Place
   drop: Place
   seats: number
-  fare: number // total for all seats: the current share (final once dropped off)
+  fare: number // total for all seats: the current share (final once the trip starts)
   /** Fair fares: the most this booking can cost; `fare` falls below it as more riders join. */
   fareMax?: number
-  /** True once the rider is dropped off and the share is fixed from the real trip. */
+  /** True once the driver started the trip and the share is fixed. */
   fareFinal?: boolean
-  /** How the final share was worked out: km ridden and the trip's real cost (GPS track), or the estimate. */
-  fareDetail?: { km?: number; source: 'track' | 'estimate'; summary?: string; exact?: number }
   /** What the rider has paid so far (wallet, online or UPI). */
   paidAmount?: number
   /** After the fare was fixed: > 0 the rider still owes this, < 0 the driver returns it (UPI). */
