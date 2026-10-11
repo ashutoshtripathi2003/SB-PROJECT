@@ -3,7 +3,7 @@ import { CAMPUS } from '../src/data/places'
 import { basemapAttribution } from './basemap'
 import { env } from './env'
 import { googleAutocomplete, googleConfigured, googlePlaceDetails, googleReverse } from './google'
-import { isHighway, olaConfigured, olaReverse, olaSearch, tomtomNearby } from './landmarks'
+import { isHighway, olaConfigured, olaReverse, olaSearch, tomtomNearby, tomtomSearch } from './landmarks'
 import { olaHasKey } from './ola'
 import { tomtomConfigured } from './traffic'
 
@@ -118,16 +118,25 @@ export async function searchPlaces(q: string, sessionToken?: string): Promise<Pl
       console.error('[ridesync] Google place search failed, using OpenStreetMap', (e as Error).message)
     }
   }
+  // Ola first (Indian places), topped up with TomTom (buildings, shops, addresses) when Ola finds few.
   if (olaConfigured()) {
     try {
       places = await olaSearch(q, CAMPUS)
-      if (places.length) {
-        cache.set(key, { at: Date.now(), places })
-        return places
-      }
     } catch (e) {
       console.error('[ridesync] Ola Maps search failed, using the next service', (e as Error).message)
     }
+  }
+  if (places.length < 4 && tomtomConfigured()) {
+    try {
+      const seen = new Set(places.map((p) => p.name.toLowerCase()))
+      places = [...places, ...(await tomtomSearch(q, CAMPUS)).filter((p) => !seen.has(p.name.toLowerCase()))].slice(0, 6)
+    } catch (e) {
+      console.error('[ridesync] TomTom place search failed, using the next service', (e as Error).message)
+    }
+  }
+  if (places.length) {
+    cache.set(key, { at: Date.now(), places })
+    return places
   }
   if (maptiler()) {
     try {

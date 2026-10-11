@@ -12,17 +12,17 @@ import { tomtomConfigured } from './traffic'
  * A service that refuses or fails is skipped for 10 minutes. Tiles are cached for a week.
  */
 
-type Source = { name: string; url: (z: number, x: number, y: number) => string; attribution: string }
+type Source = { name: string; url: (z: number, x: number, y: number, hi?: boolean) => string; attribution: string }
 
 const SOURCES: Source[] = [
   {
     name: 'tomtom',
-    url: (z, x, y) => `https://api.tomtom.com/map/1/tile/basic/main/${z}/${x}/${y}.png?key=${encodeURIComponent(env.tomtomKey)}&tileSize=256&view=IN`,
+    url: (z, x, y, hi) => `https://api.tomtom.com/map/1/tile/basic/main/${z}/${x}/${y}.png?key=${encodeURIComponent(env.tomtomKey)}&tileSize=${hi ? 512 : 256}&view=IN`,
     attribution: '© TomTom © OpenStreetMap',
   },
   {
     name: 'maptiler',
-    url: (z, x, y) => `https://api.maptiler.com/maps/streets-v2/256/${z}/${x}/${y}.png?key=${encodeURIComponent(env.maptilerKey)}`,
+    url: (z, x, y, hi) => `https://api.maptiler.com/maps/streets-v2/256/${z}/${x}/${y}${hi ? '@2x' : ''}.png?key=${encodeURIComponent(env.maptilerKey)}`,
     attribution: '© MapTiler © OpenStreetMap',
   },
   { name: 'osm', url: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`, attribution: '© OpenStreetMap contributors' },
@@ -39,8 +39,9 @@ const UA = 'RideSync/1.0 (college carpooling app)'
 /** Credit line for the map that's in use right now. */
 export const basemapAttribution = () => (available()[0] ?? SOURCES[2]).attribution
 
-export async function basemapTile(z: number, x: number, y: number): Promise<{ body: Buffer; source: string } | null> {
-  const k = `${z}/${x}/${y}`
+/** `hi`: a sharp 512-pixel tile for high-density phone screens (one request instead of four small ones). */
+export async function basemapTile(z: number, x: number, y: number, hi = false): Promise<{ body: Buffer; source: string } | null> {
+  const k = `${z}/${x}/${y}${hi ? '@2x' : ''}`
   const hit = cache.get(k)
   if (hit && Date.now() - hit.at < WEEK) {
     // Refresh recency so busy tiles stay cached.
@@ -50,7 +51,7 @@ export async function basemapTile(z: number, x: number, y: number): Promise<{ bo
   }
   for (const s of available()) {
     try {
-      const res = await fetch(s.url(z, x, y), { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': UA } })
+      const res = await fetch(s.url(z, x, y, hi), { signal: AbortSignal.timeout(6000), headers: { 'User-Agent': UA } })
       if (!res.ok || !String(res.headers.get('content-type')).startsWith('image/')) {
         if ([401, 403, 429].includes(res.status) || res.status >= 500) {
           if ((pausedUntil.get(s.name) ?? 0) < Date.now()) console.log(`[ridesync] phone app map: ${NAMES[s.name]} refused (${res.status}) — trying the next map for 10 minutes`)

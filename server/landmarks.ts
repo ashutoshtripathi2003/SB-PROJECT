@@ -102,6 +102,32 @@ export async function olaSearch(q: string, near: { lat: number; lng: number }): 
     })
 }
 
+/* ---- TomTom place search -------------------------------------------------------- */
+
+type TTSearch = { id?: string; poi?: { name?: string }; address?: { freeformAddress?: string; streetName?: string; municipalitySubdivision?: string; municipality?: string }; position?: { lat: number; lon: number } }
+
+/** Suggestions while typing: buildings, colleges, shops, stations and addresses near campus (TomTom fuzzy search). */
+export async function tomtomSearch(q: string, near: { lat: number; lng: number }): Promise<Place[]> {
+  if (!env.tomtomKey) return []
+  const r = await getJson<{ results?: TTSearch[] }>(
+    `https://api.tomtom.com/search/2/search/${encodeURIComponent(q)}.json?key=${encodeURIComponent(env.tomtomKey)}&typeahead=true&limit=6&countrySet=IN&lat=${near.lat}&lon=${near.lng}&radius=80000&language=en-GB`,
+  )
+  return (r.results ?? [])
+    .filter((x) => x.position)
+    .map((x, i) => {
+      const a = x.address ?? {}
+      const name = (x.poi?.name || a.streetName || parts(a.freeformAddress ?? '')[0] || q).trim()
+      return {
+        id: `tt-${x.id ?? i}`.slice(0, 80),
+        name,
+        area: [a.municipalitySubdivision, a.municipality].filter((s): s is string => !!s && s !== name).join(', '),
+        lat: x.position!.lat,
+        lng: x.position!.lon,
+        kind: 'custom' as const,
+      }
+    })
+}
+
 /* ---- TomTom nearby places ------------------------------------------------------ */
 
 type TTResult = { dist?: number; poi?: { name?: string }; address?: { municipalitySubdivision?: string; municipality?: string; streetName?: string }; position?: { lat: number; lon: number } }

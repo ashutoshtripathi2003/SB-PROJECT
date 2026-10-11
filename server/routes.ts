@@ -445,9 +445,11 @@ const BLANK_TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAA
 
 // Street map for the phone app (see basemap.ts). Public like the traffic tiles; cached on the phone for a week.
 api.get('/tiles/:z/:x/:y.png', async (req, res) => {
-  const [z, x, y] = [req.params.z, req.params.x, req.params.y].map(Number)
+  // y may end in @2x: the app asks for sharp tiles on high-density screens.
+  const hi = req.params.y.endsWith('@2x')
+  const [z, x, y] = [req.params.z, req.params.x, req.params.y.replace(/@2x$/, '')].map(Number)
   if (![z, x, y].every(Number.isInteger) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) return res.status(404).end()
-  const tile = await basemapTile(z, x, y)
+  const tile = await basemapTile(z, x, y, hi)
   // No service answered: a blank, uncached tile, so the app retries later instead of switching to
   // a map that needs a key (the app does that after a few failed tiles).
   if (!tile) return res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'no-store' }).send(BLANK_TILE)
