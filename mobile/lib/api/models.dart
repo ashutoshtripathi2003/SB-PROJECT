@@ -59,11 +59,7 @@ class Vehicle {
 
   /// The car's own mileage (km per litre / kg / kWh) on open roads, in the city and in heavy traffic; null = typical.
   final double? mileageSmooth, mileageCity, mileageTraffic;
-
-  /// Learnt from trip-computer readings: real fuel ÷ RideSync's estimate, over [fuelSamples] trips.
-  final double? fuelFactor;
-  final int fuelSamples;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileageSmooth, this.mileageCity, this.mileageTraffic, this.fuelFactor, this.fuelSamples = 0});
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileageSmooth, this.mileageCity, this.mileageTraffic});
   factory Vehicle.fromJson(Map<String, dynamic> j) {
     final m = j['mileage'] is Map ? (j['mileage'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
     double? n(Object? v) => v is num && v > 0 ? v.toDouble() : null;
@@ -77,9 +73,7 @@ class Vehicle {
         fuel: _s(j['fuel']),
         mileageSmooth: n(m['smooth']),
         mileageCity: n(m['city']),
-        mileageTraffic: n(m['traffic']),
-        fuelFactor: n(j['fuelFactor']),
-        fuelSamples: _i(j['fuelSamples']));
+        mileageTraffic: n(m['traffic']));
   }
   bool get hasMileage => mileageSmooth != null || mileageCity != null || mileageTraffic != null;
   String get title => '$color $make $model';
@@ -283,16 +277,11 @@ class Booking {
   final DateTime? arrivedAt;
 
   /// Fair fares: `fare` is the current equal share; it never goes above [fareMax] and is fixed
-  /// ([fareFinal]) at drop-off from the actual trip (GPS). [settleDue] < 0: the driver returns that much.
+  /// ([fareFinal]) when the driver starts the trip. [settleDue] < 0: the driver returns that much.
   final int? fareMax;
   final bool fareFinal;
   final int? paidAmount;
   final int settleDue;
-
-  /// Final share from the GPS track: the km this rider rode and how the trip's cost was worked out.
-  final double? rodeKm;
-  final String? fareSummary;
-  final bool fromTrack;
 
   Booking.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
@@ -317,10 +306,7 @@ class Booking {
         fareMax = j['fareMax'] is num ? _i(j['fareMax']) : null,
         fareFinal = j['fareFinal'] == true,
         paidAmount = j['paidAmount'] is num ? _i(j['paidAmount']) : null,
-        settleDue = j['settleDue'] is num ? _i(j['settleDue']) : 0,
-        rodeKm = j['fareDetail'] is Map && (j['fareDetail'] as Map)['km'] is num ? _d((j['fareDetail'] as Map)['km']) : null,
-        fareSummary = j['fareDetail'] is Map ? _ns((j['fareDetail'] as Map)['summary']) : null,
-        fromTrack = j['fareDetail'] is Map && (j['fareDetail'] as Map)['source'] == 'track';
+        settleDue = j['settleDue'] is num ? _i(j['settleDue']) : 0;
 
   bool get isShare => fareMax != null;
 

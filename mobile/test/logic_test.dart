@@ -19,10 +19,6 @@ void main() {
     expect(b({'fareMax': 155, 'fareFinal': true}).payNow('online'), 85);
     expect(b({}).payNow('online'), 85); // older fixed-price rides
     expect(b({'fareMax': 155, 'fareFinal': true, 'paidAmount': 130, 'settleDue': -45}).settleDue, -45);
-    final done = b({'fareMax': 155, 'fareFinal': true, 'fareDetail': {'source': 'track', 'km': 12.4, 'summary': '18.2 km in 61 min = 3.1 L × ₹90'}});
-    expect(done.fromTrack, isTrue);
-    expect(done.rodeKm, 12.4);
-    expect(b({'fareMax': 155, 'fareFinal': true, 'fareDetail': {'source': 'estimate'}}).fromTrack, isFalse);
   });
 
   test('car mileage is read from the server', () {

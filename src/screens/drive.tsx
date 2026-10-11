@@ -14,7 +14,7 @@ import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { PinEntrySheet, WomenOnlyTag } from '@/components/Safety'
-import { Avatar, Badge, Button, Chip, Field, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
+import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
@@ -197,7 +197,7 @@ export function OfferRide() {
                 ))}
               </div>
               <p className="cost-working">
-                {cost.cost.summary}. This is an estimate: the real cost is worked out from your phone’s GPS as you drive (real km, traffic and stops), so a jam on the day is covered. Keep RideSync open while driving.
+                {cost.cost.summary}. The cost is fixed with the live traffic when you start the trip, so a jam on the day is covered.
                 {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
               </p>
               {!cost.ownMileage && (
@@ -378,7 +378,6 @@ export function DriverRide() {
   const padding = useMapPadding(0.5)
   const [busy, setBusy] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<'start' | 'complete' | 'cancel' | null>(null)
-  const [tripAvg, setTripAvg] = useState('')
   const [removing, setRemoving] = useState<RiderBooking | null>(null)
   const q = useQuery<RideDetail>(rideId ? Q.ride(rideId) : null)
   const ride = q.data?.ride
@@ -437,8 +436,7 @@ export function DriverRide() {
         celebrate({ kind: 'started', title: 'Ride started', body: 'Your riders can see you on the map now. Drive safe!' })
       }
       if (confirm === 'complete') {
-        const avg = Number(tripAvg)
-        await rides.complete(ride!.id, avg >= 1 && avg <= 60 ? { avgMileage: avg } : {})
+        await rides.complete(ride!.id)
         celebrate({ kind: 'completed', title: 'Ride completed', body: 'Thanks for driving the VIT community!' })
       }
       if (confirm === 'cancel') {
@@ -550,7 +548,7 @@ export function DriverRide() {
           <p className="t-sm t-muted" style={{ marginTop: -8 }}>
             {ride.costSummary}. Split equally by the km each person rides, you included
             {riders.length > 0 && ` — your own share is about ${money(Math.max(0, ride.costTotal - riders.reduce((s, b) => s + b.fare, 0)))}`}.
-            {ride.status !== 'completed' && ' Each rider’s share is fixed at drop-off from your GPS track — keep this screen open while you drive.'}
+            {ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}
           </p>
         )}
 
@@ -644,25 +642,13 @@ export function DriverRide() {
       <ConfirmDialog
         open={confirm === 'complete'}
         title="Complete this ride?"
-        body={riders.some((b) => ['driver_arriving', 'driver_arrived'].includes(b.status)) ? 'Some riders weren’t marked as picked up — their seats will be cancelled.' : 'Confirm everyone has been dropped off. Riders still in the car are dropped now and their shares are worked out from the trip.'}
+        body={riders.some((b) => ['driver_arriving', 'driver_arrived'].includes(b.status)) ? 'Some riders weren’t marked as picked up — their seats will be cancelled.' : 'Confirm everyone has been dropped off.'}
         confirmLabel="Complete ride"
         cancelLabel="Not yet"
         loading={busy === 'confirm'}
         onConfirm={runConfirm}
         onClose={() => setConfirm(null)}
-      >
-        {ride.fareMode === 'share' && user?.vehicle?.fuel !== 'ev' && (
-          <Field
-            label="Trip computer average (optional)"
-            inputMode="decimal"
-            placeholder="e.g. 7.2"
-            value={tripAvg}
-            onChange={(e) => setTripAvg(e.target.value.replace(/[^0-9.]/g, '').slice(0, 5))}
-            trailing={<span className="t-caption t-muted" style={{ paddingRight: 10 }}>km/{user?.vehicle?.fuel === 'cng' ? 'kg' : 'L'}</span>}
-            hint="If you reset your car’s trip meter at the start, enter the average it shows. RideSync learns how your car really drives, so future costs are even closer. It doesn’t change today’s fares."
-          />
-        )}
-      </ConfirmDialog>
+      />
       <ConfirmDialog
         open={confirm === 'cancel'}
         title="Cancel your ride?"
