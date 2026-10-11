@@ -50,7 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { DEFAULT_MILEAGE, fuelPrices, maxFare, perPersonIfFull, setFuelPrices, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { CARS, CUSHION, DEFAULT_MILEAGE, carMileage, fuelPrices, perPersonIfFull, setFuelPrices, shareTable, splitCost, tripCost, vehicleMileage, type Rider as FareRider, type TripCost } from './fare'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -110,7 +110,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', fuelPrices: fuelPrices(), defaultMileage: DEFAULT_MILEAGE } })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', fuelPrices: fuelPrices(), defaultMileage: DEFAULT_MILEAGE, cushion: CUSHION } })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -276,6 +276,19 @@ api.patch(
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),
 )
+
+/** Car models RideSync knows the mileage of (for the car form's suggestions). */
+api.get('/cars', (_req, res) => {
+  res.json(CARS.map((c) => ({ make: c.make, model: c.model, fuel: c.fuel, mileage: { smooth: c.m[0], city: c.m[1], traffic: c.m[2] } })))
+})
+
+/** The mileage RideSync would use for this car (by its model), shown in the car form. */
+api.get('/cars/mileage', (req, res) => {
+  const fuel = String(req.query.fuel ?? 'petrol')
+  if (!['petrol', 'diesel', 'cng', 'ev'].includes(fuel)) return res.json({ match: null })
+  const car = carMileage(String(req.query.make ?? '').slice(0, 40), String(req.query.model ?? '').slice(0, 40), fuel as 'petrol')
+  res.json(car ? { match: car.name, mileage: car.mileage } : { match: null, mileage: DEFAULT_MILEAGE[fuel as 'petrol'] })
+})
 
 const MileageZ = z.number().min(1, 'Mileage looks too low').max(60, 'Mileage looks too high').nullable()
 
@@ -510,20 +523,24 @@ function fareRiders(rideId: string, exceptBookingId?: string): FareRider[] {
 /** Road km of the driver's route this rider travels. */
 const riderKm = (r: Row, fraction = 1) => Math.max(0.5, Math.round(Number(r.distance_km) * Math.min(1, Math.max(0, fraction)) * 10) / 10)
 
-/** A rider's share (total for their seats) if they joined now, and the most it can ever cost them. */
-function quoteShare(r: Row, km: number, seats: number, exceptBookingId?: string) {
-  const cost = Number(r.cost_total)
-  const L = Number(r.distance_km)
-  const max = maxFare(cost, L, km, seats)
-  const fare = splitCost(cost, L, [...fareRiders(String(r.id), exceptBookingId), { id: '_quote', km, seats, max }]).get('_quote')!
-  return { fare, max }
+/** The trip cost riders' prices are based on before the start: the forecast plus the traffic cushion. */
+const bookedCost = (r: Row) => Number(r.cost_total) * CUSHION
+
+/**
+ * A rider's price (total for their seats) if they booked now: their equal share with the riders already
+ * in, from the forecast cost plus the 10% cushion. It is locked as their maximum (`fare_max`).
+ */
+function quoteShare(r: Row, km: number, seats: number, exceptBookingId?: string, cap?: number) {
+  const fare = splitCost(bookedCost(r), Number(r.distance_km), [...fareRiders(String(r.id), exceptBookingId), { id: '_quote', km, seats, max: cap }]).get('_quote')!
+  return { fare, max: cap ?? fare }
 }
 
 /** After a rider joins or leaves (before the trip starts): everyone's current share, re-split equally. */
 function resplit(rideId: string) {
   const r = rideRow(rideId)
   if (r.fare_mode !== 'share' || r.status !== 'scheduled') return
-  const fares = splitCost(Number(r.cost_total), Number(r.distance_km), fareRiders(rideId))
+  // Never above what each rider saw when booking (fareRiders carries it as the cap).
+  const fares = splitCost(bookedCost(r), Number(r.distance_km), fareRiders(rideId))
   for (const [id, fare] of fares) {
     const b = bookingRow(id)
     const before = Number(b.fare)
@@ -532,24 +549,28 @@ function resplit(rideId: string) {
     notify(
       String(b.rider_id),
       'payment',
-      fare < before ? `Your share went down to ${money(fare)}` : `Your share is now ${money(fare)}`,
-      `${fare < before ? 'Another rider joined, so the trip cost is split more ways' : 'A rider left, so the cost is split fewer ways'}. It is fixed when the driver starts the trip and never goes above ${money(Number(b.fare_max))}.`,
+      fare < before ? `Your price went down to ${money(fare)}` : `Your price is now ${money(fare)}`,
+      `${fare < before ? 'Another rider joined, so the trip cost is split more ways' : 'A rider left, so the cost is split fewer ways'}. It can drop again when the driver starts, if traffic is lighter, and never goes above the ${money(Number(b.fare_max))} you booked at.`,
       `/trip/${id}`,
     )
   }
   // Requests not answered yet: their share if accepted now.
   for (const b of all(`SELECT * FROM bookings WHERE ride_id = ? AND status = 'pending'`, rideId)) {
-    const q = quoteShare(r, Number(b.share_km), Number(b.seats), String(b.id))
+    const q = quoteShare(r, Number(b.share_km), Number(b.seats), String(b.id), b.fare_max == null ? undefined : Number(b.fare_max))
     if (Number(b.fare) !== q.fare) run(`UPDATE bookings SET fare = ? WHERE id = ?`, q.fare, b.id)
   }
 }
 
-/** The trip's cost with the live traffic right now (for the final split at the start). */
+/**
+ * The trip's real cost with the live traffic right now (for the final price at the start). Null when no
+ * live traffic is available: then the booked prices stand (nothing is lowered on a guess).
+ */
 async function liveTripCost(r: Row): Promise<TripCost | null> {
   try {
     const route = await getRoute(JSON.parse(String(r.origin)), JSON.parse(String(r.destination)), { departAt: new Date() })
+    const live = route.source === 'tomtom' || route.source === 'google' || route.trafficDelayMin != null
     const v = vehicleFor(String(r.driver_id))
-    return v ? tripCost(v.fuel, v.mileage ?? {}, route) : null
+    return v && live ? tripCost(v.fuel, vehicleMileage(v).mileage, route) : null
   } catch {
     return null
   }
@@ -709,15 +730,17 @@ api.post(
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
-    const cost = tripCost(vehicle.fuel, vehicle.mileage ?? {}, route)
+    const cost = tripCost(vehicle.fuel, vehicleMileage(vehicle).mileage, route)
     return {
       cost,
-      shares: shareTable(cost.total, p.seats),
-      perPersonIfFull: perPersonIfFull(cost.total, p.seats),
+      // What each rider would book at (with the cushion); it can drop at the start.
+      shares: shareTable(cost.total * CUSHION, p.seats),
+      perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
       distanceKm: Math.round(route.distanceKm * 10) / 10,
       durationMin: route.durationMin,
       trafficDelayMin: route.trafficDelayMin ?? 0,
       ownMileage: !!vehicle.mileage,
+      mileage: vehicleMileage(vehicle),
     }
   }),
 )
@@ -758,8 +781,8 @@ api.post(
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
     // Fair fares: the trip's real cost with this car and the traffic forecast for the departure time.
     // (A farePerSeat sent by older apps is ignored: riders pay an equal share of this cost.)
-    const cost = tripCost(vehicle.fuel, vehicle.mileage ?? {}, route)
-    const farePerSeat = perPersonIfFull(cost.total, p.seats)
+    const cost = tripCost(vehicle.fuel, vehicleMileage(vehicle).mileage, route)
+    const farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
 
     const id = newId('r')
     run(
@@ -878,10 +901,10 @@ api.post(
     const driverName = first(String(me(req).name))
     tx(() => {
       if (r.fare_mode === 'share') {
-        const total = live?.total ?? Number(r.cost_total)
-        if (live) run(`UPDATE rides SET cost_final = ?, cost_detail = ? WHERE id = ?`, total, JSON.stringify(live), r.id)
-        const fares = splitCost(total, Number(r.distance_km), fareRiders(String(r.id)))
-        for (const b of riders) settleBooking(b, fares.get(String(b.id)) ?? Number(b.fare))
+        // The real cost with live traffic, no cushion; each price can only go down from what was booked.
+        if (live) run(`UPDATE rides SET cost_final = ?, cost_detail = ? WHERE id = ?`, live.total, JSON.stringify(live), r.id)
+        const fares = live ? splitCost(live.total, Number(r.distance_km), fareRiders(String(r.id))) : null
+        for (const b of riders) settleBooking(b, Math.min(Number(b.fare), fares?.get(String(b.id)) ?? Number(b.fare)))
       }
       run(`UPDATE rides SET status = 'in_progress', started_at = ? WHERE id = ?`, nowIso(), r.id)
       for (const b of riders) {
@@ -1043,7 +1066,7 @@ api.post(
           'accepted',
           `${name} accepted your request`,
           nb.fare_max != null && !Number(nb.fare_final)
-            ? `Your share is ${money(Number(nb.fare))} now and never more than ${money(Number(nb.fare_max))}; it drops if more riders join. Choose how you’ll pay to confirm your seat.`
+            ? `Your price is ${money(Number(nb.fare))} and it never goes up. It drops if more riders join, and again when the trip starts if traffic is lighter. Choose how you’ll pay to confirm your seat.`
             : `Choose how you’ll pay ${money(Number(nb.fare))} to confirm your seat.`,
           `/trip/${b.id}`,
         )
@@ -1082,14 +1105,15 @@ api.post(
       status,
       p.reference || null,
       p.method === 'upi' ? nowIso() : null,
-      // UPI pays the current share; any difference is settled with the driver when the trip starts.
-      p.method === 'upi' ? Number(b.fare) : null,
+      // UPI pays the booked price like every method; if it drops at the start, the driver returns the difference.
+      p.method === 'upi' ? chargeAmount(b) : null,
       nowIso(),
       b.id,
     )
     const riderName = first(String(me(req).name))
-    systemMessage(String(b.id), p.method === 'upi' ? `${riderName} paid ${money(Number(b.fare))} by UPI${p.reference ? ` (ref ${p.reference})` : ''}.` : `${riderName} will pay ${money(Number(b.fare))} in cash at pickup.`)
-    notify(String(r.driver_id), 'payment', p.method === 'upi' ? `${riderName} paid by UPI` : `${riderName} confirmed their seat`, p.method === 'upi' ? `${money(Number(b.fare))} sent to your UPI. Check your bank app.` : `${money(Number(b.fare))} in cash at pickup.`, `/drive/${r.id}`)
+    const amount = chargeAmount(b)
+    systemMessage(String(b.id), p.method === 'upi' ? `${riderName} paid ${money(amount)} by UPI${p.reference ? ` (ref ${p.reference})` : ''}.` : `${riderName} will pay in cash at pickup.`)
+    notify(String(r.driver_id), 'payment', p.method === 'upi' ? `${riderName} paid by UPI` : `${riderName} confirmed their seat`, p.method === 'upi' ? `${money(amount)} sent to your UPI. Check your bank app.` : `Cash at pickup (${money(Number(b.fare))}, or less if the price drops when you start).`, `/drive/${r.id}`)
     sync([String(r.driver_id), meId(req)])
   }),
 )

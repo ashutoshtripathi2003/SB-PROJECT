@@ -99,8 +99,8 @@ describe('full ride between two devices', () => {
     expect(search.body.results).toHaveLength(1)
     expect(search.body.results[0].score).toBeGreaterThan(80)
     expect(search.body.results[0].driver.gender).toBeUndefined()
-    // Alone with the driver, the rider's share is half the cost (rounded to ₹5); the maximum adds traffic head-room.
-    expect(Math.abs(search.body.results[0].fare - pub.body.costTotal / 2)).toBeLessThanOrEqual(5)
+    // Alone with the driver, the rider's price is half the cost plus the 10% traffic cushion (rounded to ₹5).
+    expect(Math.abs(search.body.results[0].fare - (pub.body.costTotal * 1.1) / 2)).toBeLessThanOrEqual(5)
     expect(search.body.results[0].fareMax).toBeGreaterThanOrEqual(search.body.results[0].fare)
     const feed = await rider.get('/api/rides/feed')
     expect(feed.body.map((x: { ride: { id: string } }) => x.ride.id)).toContain(rideId)

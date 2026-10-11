@@ -142,11 +142,11 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
               Expanded(child: Text(when(ride.departAt), style: RS.heading(22))),
               Text(money(m?.fare ?? ride.farePerSeat), style: RS.heading(24, color: RS.primary)),
             ]),
-            Text('${km(ride.distanceKm)} · about ${minutes(ride.durationMin)} · ${ride.shareFare ? 'your share per seat' : 'per seat'}${m?.fareMax != null ? ' · never more than ${money(m!.fareMax!)}' : ''}', style: const TextStyle(color: RS.ink500)),
+            Text('${km(ride.distanceKm)} · about ${minutes(ride.durationMin)} · ${ride.shareFare ? 'your price per seat, never goes up' : 'per seat'}', style: const TextStyle(color: RS.ink500)),
             if (ride.shareFare && ride.costTotal != null) ...[
               const SizedBox(height: 6),
               Text(
-                  'The trip costs about ${money(ride.costTotal!)} in fuel and wear${ride.costSummary != null ? ' (${ride.costSummary})' : ''}. It’s split equally among everyone in the car, ${d.driver.firstName} included, by the km each person rides. Your share drops as more riders join and is fixed with the live traffic when the trip starts.',
+                  'The trip costs about ${money(ride.costTotal!)} in fuel and wear${ride.costSummary != null ? ' (${ride.costSummary})' : ''}. It’s split equally among everyone in the car, ${d.driver.firstName} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter.',
                   style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
             ],
             const SizedBox(height: 16),
@@ -507,10 +507,10 @@ class _TripView extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${money(b.fare)} · ${b.seats} seat${b.seats == 1 ? '' : 's'}${b.isShare ? (b.fareFinal ? ' · final share' : ' · your share now') : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('${money(b.fare)} · ${b.seats} seat${b.seats == 1 ? '' : 's'}${b.isShare ? (b.fareFinal ? ' · final price' : ' · your price') : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
                 Text(paymentLabel(b.paymentMethod, b.paymentStatus), style: const TextStyle(color: RS.ink500, fontSize: 13)),
                 if (b.isShare && !b.fareFinal)
-                  Text('Drops if more riders join · fixed when the trip starts · never more than ${money(b.fareMax!)}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+                  Text('Never goes up · drops if more riders join, or when the trip starts if traffic is lighter${b.fare < b.fareMax! ? ' · booked at ${money(b.fareMax!)}' : ''}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
                 if (b.settleDue != 0)
                   Text(b.settleDue < 0 ? 'The driver returns ${money(-b.settleDue)} to you' : 'Pay the driver ${money(b.settleDue)} more', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
                 if (b.fareFinal && b.settleDue == 0 && b.paidAmount != null && b.paidAmount! > b.fare)
@@ -724,10 +724,10 @@ void showPaySheet(BuildContext context, BookingDetail d) {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(b.isShare && !b.fareFinal ? 'Your share: ${money(b.fare)}' : 'Pay ${money(b.fare)}', style: RS.heading(24)),
+          Text('Pay ${money(b.payNow('online'))}', style: RS.heading(24)),
           const SizedBox(height: 4),
           if (b.isShare && !b.fareFinal) ...[
-            Text('Never more than ${money(b.fareMax!)}. It drops if more riders join and is fixed with the live traffic when ${d.driver.firstName} starts the trip. Wallet and online payments hold ${money(b.fareMax!)} and the difference comes straight back; UPI pays ${money(b.fare)} now and ${d.driver.firstName} returns any difference.',
+            Text('${b.fare < b.fareMax! ? 'Your price is now ${money(b.fare)} (more riders joined). ' : ''}Your price never goes up. If it’s lower when ${d.driver.firstName} starts the trip (more riders, or lighter traffic), the difference comes back to you automatically (UPI: ${d.driver.firstName} returns it). Cash: pay the final price at pickup.',
                 style: const TextStyle(color: RS.ink700, fontSize: 13, height: 1.4)),
             const SizedBox(height: 6),
           ],
@@ -799,7 +799,7 @@ void showPaySheet(BuildContext context, BookingDetail d) {
           option(Icons.payments_outlined, 'Cash at pickup', 'Hand the exact amount to the driver', () async {
             Navigator.pop(sheet);
             if (await attempt(context, () => api.pay(b.id, 'cash')) && context.mounted) {
-              await showSuccess(context, 'Seat confirmed', subtitle: b.isShare ? 'Pay your final share in cash at pickup.' : 'Pay ${money(b.fare)} in cash at pickup.');
+              await showSuccess(context, 'Seat confirmed', subtitle: b.isShare ? 'Pay the final price in cash at pickup (it can only be lower).' : 'Pay ${money(b.fare)} in cash at pickup.');
             }
           }),
           const SizedBox(height: 4),
@@ -829,7 +829,7 @@ Future<void> _payOnline(BuildContext context, BookingDetail d) async {
   if (r == null || !context.mounted) return;
   if (await attempt(context, () => api.verifyOnline(d.booking.id, r.orderId, r.paymentId, r.signature)) && context.mounted) {
     await showSuccess(context, 'Paid ${money(d.booking.payNow('online'))}',
-        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. Anything above your final share comes back when the trip starts.' : 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
+        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. If your price is lower when the trip starts, the difference comes back to you.' : 'Your seat is confirmed. Refunded automatically if the ride is cancelled.');
   }
 }
 
@@ -844,7 +844,7 @@ Future<void> _payWallet(BuildContext context, BookingDetail d, WalletInfo w) asy
   }
   if (await attempt(context, () => api.payFromWallet(d.booking.id)) && context.mounted) {
     await showSuccess(context, 'Paid ${money(fare)} from wallet',
-        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. Anything above your final share comes back to your wallet when the trip starts.' : 'Your seat is confirmed. Refunded to your wallet if the ride is cancelled.');
+        subtitle: d.booking.isShare && !d.booking.fareFinal ? 'Your seat is confirmed. If your price is lower when the trip starts, the difference comes back to your wallet.' : 'Your seat is confirmed. Refunded to your wallet if the ride is cancelled.');
   }
 }
 

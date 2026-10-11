@@ -72,12 +72,12 @@ export function TripSummary({ detail }: { detail: BookingDetail }) {
       <hr className="divider" />
       <div className="bill">
         <div className="bill__row">
-          <span>{booking.fareMax == null ? 'Cost share' : booking.fareFinal ? 'Your final equal share' : 'Your equal share now'}</span>
+          <span>{booking.fareMax == null ? 'Cost share' : booking.fareFinal ? 'Your final price' : 'Your price'}</span>
           <span>{money(booking.fare)}</span>
         </div>
         {booking.fareMax != null && !booking.fareFinal && (
           <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
-            <span>Drops if more riders join · fixed when the trip starts · never more than {money(booking.fareMax)}</span>
+            <span>Never goes up · drops if more riders join, or when the trip starts if traffic is lighter{booking.fare < booking.fareMax ? ` · booked at ${money(booking.fareMax)}` : ''}</span>
           </div>
         )}
         {ride.costTotal != null && booking.fareMax != null && (

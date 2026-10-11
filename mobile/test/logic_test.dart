@@ -15,7 +15,8 @@ void main() {
     expect(open.isShare, isTrue);
     expect(open.payNow('online'), 155);
     expect(open.payNow('wallet'), 155);
-    expect(open.payNow('upi'), 85);
+    expect(open.payNow('upi'), 155); // every method pays the booked price; lower comes back at the start
+    expect(open.payNow('cash'), 85);
     expect(b({'fareMax': 155, 'fareFinal': true}).payNow('online'), 85);
     expect(b({}).payNow('online'), 85); // older fixed-price rides
     expect(b({'fareMax': 155, 'fareFinal': true, 'paidAmount': 130, 'settleDue': -45}).settleDue, -45);

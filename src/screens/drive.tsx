@@ -197,18 +197,15 @@ export function OfferRide() {
                 ))}
               </div>
               <p className="cost-working">
-                {cost.cost.summary}. The cost is fixed with the live traffic when you start the trip, so a jam on the day is covered.
+                {cost.cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.
                 {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
               </p>
-              {!cost.ownMileage && (
-                <p className="t-sm" style={{ marginTop: 8 }}>
-                  Using typical mileage for a {u.vehicle?.fuel === 'ev' ? 'electric' : u.vehicle?.fuel} car.{' '}
-                  <button type="button" className="t-strong t-primary" onClick={() => setVehicleOpen(true)}>
-                    Add your car’s mileage
-                  </button>{' '}
-                  for an exact cost.
-                </p>
-              )}
+              <p className="t-sm t-muted" style={{ marginTop: 8 }}>
+                {cost.mileage.source === 'own' ? 'Using your own mileage figures.' : cost.mileage.source === 'model' ? `Using typical ${cost.mileage.name} mileage.` : `Using typical mileage for a ${u.vehicle?.fuel === 'ev' ? 'electric' : u.vehicle?.fuel} car.`}{' '}
+                <button type="button" className="t-strong t-primary" onClick={() => setVehicleOpen(true)}>
+                  {cost.mileage.source === 'own' ? 'Change' : 'My car differs'}
+                </button>
+              </p>
             </div>
           ) : (
             <p className="t-sm t-muted">{u.vehicle ? 'Choose your destination and time to see the trip cost.' : 'Add your car to see the trip cost.'}</p>
