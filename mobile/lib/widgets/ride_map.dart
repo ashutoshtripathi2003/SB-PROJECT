@@ -483,6 +483,8 @@ class _RideMapState extends State<RideMap> with TickerProviderStateMixin {
       children: [
         fm.TileLayer(
           urlTemplate: tileUrl,
+          // A tile that failed (laptop busy, network blip) is dropped and asked for again when the map moves.
+          evictErrorTileStrategy: fm.EvictErrorTileStrategy.notVisibleRespectMargin,
           userAgentPackageName: 'com.ridesync.ridesync',
           retinaMode: fm.RetinaMode.isHighDensity(context),
         ),

@@ -37,6 +37,27 @@ describe('street map for the phone app', () => {
     expect(f).toHaveBeenCalledTimes(1)
   })
 
+  it('retries TomTom once on a burst limit instead of dropping it', async () => {
+    let n = 0
+    globalThis.fetch = vi.fn(async (url: string) => (url.includes('tomtom') && n++ === 0 ? new Response('busy', { status: 429 }) : png())) as unknown as typeof fetch
+    expect((await basemapTile(13, 5772, 3676))?.source).toBe('tomtom')
+  })
+
+  it('never runs more than 6 map fetches at once, and fetches a repeated tile once', async () => {
+    let now = 0, peak = 0
+    const f = vi.fn(async () => {
+      peak = Math.max(peak, ++now)
+      await new Promise((r) => setTimeout(r, 20))
+      now--
+      return png()
+    })
+    globalThis.fetch = f as unknown as typeof fetch
+    const tiles = await Promise.all([...Array(20)].map((_, i) => basemapTile(14, 11500 + i, 7350)).concat([basemapTile(14, 11500, 7350)]))
+    expect(tiles.every((t) => t?.source === 'tomtom')).toBe(true)
+    expect(peak).toBeLessThanOrEqual(6)
+    expect(f).toHaveBeenCalledTimes(20)
+  })
+
   it('sends one sharp 512-pixel tile for @2x requests', async () => {
     const f = vi.fn(async (_url: string) => png())
     globalThis.fetch = f as unknown as typeof fetch
@@ -67,11 +88,11 @@ describe('street map for the phone app', () => {
     expect(res.status).toBe(200)
     expect(res.headers['content-type']).toBe('image/png')
     expect((await request(app).get('/api/tiles/2/9/0.png')).status).toBe(404)
-    // Every service down: a blank tile (not an error), so the app doesn't switch to a keyed map.
+    // Every service down: an error the app retries when the map moves (not a blank square it keeps).
     globalThis.fetch = vi.fn(async () => new Response('down', { status: 503 })) as typeof fetch
-    const blank = await request(app).get('/api/tiles/12/2887/1838.png')
-    expect(blank.status).toBe(200)
-    expect(blank.headers['cache-control']).toBe('no-store')
+    const down = await request(app).get('/api/tiles/12/2887/1838.png')
+    expect(down.status).toBe(503)
+    expect(down.headers['cache-control']).toBe('no-store')
     const cfg = (await request(app).get('/api/config').set('x-ridesync-app', '1').set('Host', 'abc.trycloudflare.com').set('X-Forwarded-Proto', 'https')).body
     expect(cfg.maps.tiles.url).toBe('https://abc.trycloudflare.com/api/tiles/{z}/{x}/{y}.png')
     // Tunnel link without the https hint still gets https (phones block http); Wi-Fi addresses keep http.
