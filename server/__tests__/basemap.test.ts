@@ -37,6 +37,25 @@ describe('street map for the phone app', () => {
     expect(f).toHaveBeenCalledTimes(1)
   })
 
+  it('sends one sharp 512-pixel tile for @2x requests', async () => {
+    const f = vi.fn(async (_url: string) => png())
+    globalThis.fetch = f as unknown as typeof fetch
+    expect((await request(app).get('/api/tiles/12/2886/1838@2x.png')).status).toBe(200)
+    expect(String(f.mock.calls[0][0])).toContain('/12/2886/1838.png?')
+    expect(String(f.mock.calls[0][0])).toContain('tileSize=512')
+  })
+
+  it('suggests TomTom places (buildings, shops) while typing', async () => {
+    globalThis.fetch = vi.fn(async (url: string) =>
+      url.includes('api.tomtom.com/search/2/search/')
+        ? Response.json({ results: [{ id: 'a1', poi: { name: 'Phoenix Marketcity' }, address: { municipalitySubdivision: 'Kurla West', municipality: 'Mumbai' }, position: { lat: 19.0866, lon: 72.8888 } }] })
+        : new Response('nope', { status: 500 }),
+    ) as unknown as typeof fetch
+    const { searchPlaces } = await import('../maps')
+    const places = await searchPlaces('phoenix mark')
+    expect(places[0]).toMatchObject({ name: 'Phoenix Marketcity', area: 'Kurla West, Mumbai', lat: 19.0866, lng: 72.8888 })
+  })
+
   it('startup check says which map service works and which refuses', async () => {
     globalThis.fetch = vi.fn(async (url: string) => (url.includes('tomtom') ? new Response('Forbidden', { status: 403 }) : url.includes('maptiler') ? new Response('x', { status: 429 }) : png())) as unknown as typeof fetch
     expect(await checkBasemap()).toBe('TomTom ✗ (403 — key refused) · MapTiler ✗ (429 — daily limit reached) · OpenStreetMap ✓')

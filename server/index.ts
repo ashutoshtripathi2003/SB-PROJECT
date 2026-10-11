@@ -59,7 +59,7 @@ const server = app.listen(env.port, () => {
   console.log(`[ridesync] pin names: ${[env.google.key && 'Google', (env.olaKey || env.olaClientId) && 'Ola Maps', env.tomtomKey && 'TomTom places', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')}`)
   const g = !!env.google.key && !env.google.routesOnly
   console.log(
-    `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap'} · routes: ${env.google.key ? 'Google (live traffic)' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
+    `[ridesync] map: ${g && env.google.display ? 'Google' : env.maptilerKey ? 'MapTiler' : 'OpenStreetMap/CARTO'} · search: ${g ? 'Google' : [(env.olaKey || env.olaClientId) && 'Ola Maps', env.tomtomKey && 'TomTom', env.maptilerKey && 'MapTiler', 'OpenStreetMap'].filter(Boolean).join(' → ')} · routes: ${env.google.key ? 'Google (live traffic)' : env.tomtomKey ? 'TomTom (live traffic)' : env.orsKey ? 'OpenRouteService' : 'OSRM'}`,
   )
   console.log(pushConfigured() ? `[ridesync] phone notifications: Firebase ✓ (project ${pushProject()})` : '[ridesync] phone notifications: off — add firebase-key.json to this folder (see README › Phone notifications)')
   void checkBasemap().then((r) => console.log(`[ridesync] phone app map check: ${r}${r.includes('✓') ? '' : '  ⚠ NO MAP SERVICE WORKS — the app map will be blank. Check TOMTOM_KEY (developer.tomtom.com → your app → Map Display API must be on) and the laptop’s internet.'}`))

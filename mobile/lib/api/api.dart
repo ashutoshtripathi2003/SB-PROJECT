@@ -128,7 +128,8 @@ class Api {
         if (departAt != null) 'departAt': departAt.toUtc().toIso8601String(),
       })));
   String get trafficTileUrl => '$baseUrl/api/traffic/{z}/{x}/{y}.png';
-  String get mapTileUrl => '$baseUrl/api/tiles/{z}/{x}/{y}.png';
+  // {r} → @2x on high-density screens: one sharp 512-pixel tile instead of four small ones.
+  String get mapTileUrl => '$baseUrl/api/tiles/{z}/{x}/{y}{r}.png';
   Future<RouteInfo> route(Place from, Place to) async => RouteInfo.fromJson(_map(await post('/route', {'from': from.toJson(), 'to': to.toJson()})));
 
   /* ---- Rides ---- */
