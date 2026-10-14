@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import nodemailer, { type Transporter } from 'nodemailer'
 import { env, smtpBackupConfigured, smtpConfigured } from './env'
 import { HttpError } from './logic'
@@ -51,6 +53,18 @@ function message(email: string, code: string) {
   }
 }
 
+/** The admin switch on the live server: while this file exists, login codes are also printed in the server log. */
+export const loginCodeSwitch = () => join(dirname(env.databasePath), 'show-login-codes')
+
+/**
+ * Whether the server log shows the login code next to "login code emailed to …" (handy when Outlook delays it).
+ * On your own laptop: yes, unless SHOW_LOGIN_CODES=false. Online: only while the admin switch file exists
+ * (`sudo touch /opt/ridesync/data/show-login-codes`; remove it to stop). Reading the log needs the server's SSH key.
+ */
+export function showLoginCodes(prod = env.isProd, switchFile = loginCodeSwitch()) {
+  return prod ? existsSync(switchFile) : process.env.SHOW_LOGIN_CODES !== 'false'
+}
+
 export async function sendLoginCode(email: string, code: string) {
   if (!senders.length) {
     // Development without SMTP: print to the server console only.
@@ -68,8 +82,7 @@ export async function sendLoginCode(email: string, code: string) {
       }
       s.sentToday++
       if (process.env.NODE_ENV !== 'test') {
-        // On your own laptop the code is also printed here (handy if Outlook delays it). Never when deployed online.
-        const show = !env.isProd && process.env.SHOW_LOGIN_CODES !== 'false'
+        const show = showLoginCodes()
         console.log(`[ridesync] login code emailed to ${email}${show ? ` — code ${code}` : ''} (from ${s.from}) — if it doesn't arrive, check Junk/Quarantine in Outlook`)
       }
       return

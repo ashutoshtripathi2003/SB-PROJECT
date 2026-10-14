@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
@@ -38,5 +41,26 @@ describe('login email failover', () => {
       throw new Error('421 Rate limit exceeded')
     }) as never
     await expect(mail.sendLoginCode('c@vit.edu.in', '333333')).rejects.toThrow(/Sign in with Microsoft/)
+  })
+})
+
+describe('showing login codes in the server log', () => {
+  it('online, shows them only while the admin switch file exists', async () => {
+    const { showLoginCodes } = await import('../mail')
+    const dir = mkdtempSync(join(tmpdir(), 'rs-codes-'))
+    const file = join(dir, 'show-login-codes')
+    expect(showLoginCodes(true, file)).toBe(false)
+    writeFileSync(file, '')
+    expect(showLoginCodes(true, file)).toBe(true)
+    rmSync(dir, { recursive: true })
+    expect(showLoginCodes(true, file)).toBe(false)
+  })
+
+  it('on a laptop, shows them unless SHOW_LOGIN_CODES=false', async () => {
+    const { showLoginCodes } = await import('../mail')
+    expect(showLoginCodes(false, '/nowhere')).toBe(true)
+    process.env.SHOW_LOGIN_CODES = 'false'
+    expect(showLoginCodes(false, '/nowhere')).toBe(false)
+    delete process.env.SHOW_LOGIN_CODES
   })
 })
