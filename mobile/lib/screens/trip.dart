@@ -146,7 +146,7 @@ class _RideDetailsScreenState extends State<RideDetailsScreen> {
             if (ride.shareFare && ride.costTotal != null) ...[
               const SizedBox(height: 6),
               Text(
-                  'The trip costs about ${money(ride.costTotal!)} in fuel and wear${ride.costSummary != null ? ' (${ride.costSummary})' : ''}. It’s split equally among everyone in the car, ${d.driver.firstName} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter.',
+                  'The trip costs about ${money(ride.costTotal!)}, from its distance and time${ride.costSummary != null ? ' (${ride.costSummary})' : ''}. It’s split equally among everyone in the car, ${d.driver.firstName} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter.',
                   style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
             ],
             const SizedBox(height: 16),

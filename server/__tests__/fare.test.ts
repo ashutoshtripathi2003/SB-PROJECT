@@ -17,60 +17,22 @@ beforeAll(async () => {
   app = (await import('../app')).createApp()
 })
 
-// The user's Hyundai Venue (diesel): ~6.5 km/L on open roads (their figure), 11.5 in the city, 3.5 in heavy traffic.
-const venue = { smooth: 6.5, city: 11.5, traffic: 3.5 }
-
 describe('trip cost', () => {
-  it('splits the route into smooth, city and jam km from the traffic delay', () => {
-    const free = fare.conditionKm({ distanceKm: 25, durationMin: 75 })
-    expect(free.traffic).toBe(0)
-    expect(free.city).toBeCloseTo(25, 5) // 20 km/h average, no delay: city driving
-    const jam = fare.conditionKm({ distanceKm: 25, durationMin: 113, trafficDelayMin: 55 })
-    expect(jam.traffic).toBeGreaterThan(10)
-    expect(jam.smooth + jam.city + jam.traffic).toBeCloseTo(25, 5)
-    const highway = fare.conditionKm({ distanceKm: 60, durationMin: 50 })
-    expect(highway.smooth).toBeCloseTo(60, 5)
+  it('is km × ₹ per km plus minutes × ₹ per minute, and shows the working', () => {
+    const rates = { perKm: 7, perMin: 1 }
+    const c = fare.tripCost({ distanceKm: 18, durationMin: 55, trafficDelayMin: 20 }, rates)
+    expect(c).toMatchObject({ total: 181, km: 18, min: 55, trafficMin: 20, distanceCost: 126, timeCost: 55 })
+    expect(c.summary).toBe('18 km × ₹7 + 55 min × ₹1 = ₹181')
   })
 
-  it('costs more in traffic, with the driver’s own mileage, and shows the working', () => {
-    const prices = { ...fare.DEFAULT_FUEL_PRICES }
-    const normal = fare.tripCost('diesel', venue, { distanceKm: 25, durationMin: 58, trafficDelayMin: 0 }, prices)
-    const rush = fare.tripCost('diesel', venue, { distanceKm: 25, durationMin: 113, trafficDelayMin: 55 }, prices)
-    expect(rush.total).toBeGreaterThan(normal.total * 1.4)
-    expect(rush.wear).toBe(normal.wear) // wear depends on km only
-    expect(rush.summary).toMatch(/heavy traffic @ 3\.5 km\/L/)
-    expect(rush.summary).toContain(`= ₹${rush.total}`)
-    // A car with better mileage costs less on the same trip.
-    const typical = fare.tripCost('diesel', {}, { distanceKm: 25, durationMin: 113, trafficDelayMin: 55 }, prices)
-    expect(typical.total).toBeLessThan(rush.total)
-    // Fuel price comes from the admin's table.
-    const dearer = fare.tripCost('diesel', venue, { distanceKm: 25, durationMin: 58 }, { ...prices, diesel: 100 })
-    expect(dearer.fuelCost).toBeGreaterThan(normal.fuelCost)
-  })
-
-  it('fills blank mileage from the typical values, scaled to the car', () => {
-    expect(fare.mileageFor('petrol')).toEqual(fare.DEFAULT_MILEAGE.petrol)
-    const m = fare.mileageFor('diesel', { city: 8 }) // half the typical city mileage
-    expect(m.city).toBe(8)
-    expect(m.smooth).toBeCloseTo(fare.DEFAULT_MILEAGE.diesel.smooth / 2, 5)
-    expect(m.traffic).toBeCloseTo(fare.DEFAULT_MILEAGE.diesel.traffic / 2, 5)
-  })
-})
-
-describe('mileage by car model', () => {
-  it('knows popular cars, so the driver needn’t type anything', () => {
-    expect(fare.carMileage('Hyundai', 'Venue', 'diesel')).toEqual({ name: 'Hyundai Venue', mileage: { smooth: 20, city: 15, traffic: 9 } })
-    expect(fare.carMileage('Maruti Suzuki', 'Swift Dzire VXi', 'petrol')?.name).toBe('Maruti Dzire')
-    expect(fare.carMileage('Hyundai', 'Grand i10 Nios', 'cng')?.name).toBe('Hyundai i10')
-    expect(fare.carMileage('Tata', 'Nexon EV Max', 'ev')?.mileage.city).toBe(7.5)
-    expect(fare.carMileage('Lamborghini', 'Urus', 'petrol')).toBeNull()
-  })
-
-  it('uses the driver’s own figures first, then the model’s, then typical ones', () => {
-    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel' })).toMatchObject({ source: 'model', mileage: { smooth: 20, city: 15, traffic: 9 } })
-    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel', mileage: venue })).toMatchObject({ source: 'own', mileage: venue })
-    expect(fare.vehicleMileage({ make: 'Hyundai', model: 'Venue', fuel: 'diesel', mileage: { traffic: 4 } }).mileage).toEqual({ smooth: 20, city: 15, traffic: 4 })
-    expect(fare.vehicleMileage({ make: 'Foo', model: 'Bar', fuel: 'petrol' })).toMatchObject({ source: 'typical', mileage: fare.DEFAULT_MILEAGE.petrol })
+  it('costs more in traffic, for the same km, whatever the car', () => {
+    const rates = { ...fare.DEFAULT_RATES }
+    const clear = fare.tripCost({ distanceKm: 25, durationMin: 58 }, rates)
+    const rush = fare.tripCost({ distanceKm: 25, durationMin: 113, trafficDelayMin: 55 }, rates)
+    expect(rush.distanceCost).toBe(clear.distanceCost) // the km part is the same
+    expect(rush.total - clear.total).toBe(55 * rates.perMin) // the jam adds only its minutes
+    // The rates come from the admin's settings.
+    expect(fare.tripCost({ distanceKm: 25, durationMin: 58 }, { perKm: 8, perMin: 1 }).total).toBe(clear.total + 25)
   })
 })
 
@@ -117,18 +79,17 @@ async function student(email: string, extra: Record<string, unknown> = {}) {
 }
 
 describe('fair fares end to end', () => {
-  it('saves mileage, previews the cost, re-splits as riders join, and settles at the start', async () => {
+  it('previews the cost, re-splits as riders join, and settles at the start', async () => {
     const driver = await student('fare.driver@vit.edu.in', { upiId: 'driver@okaxis' })
-    const car = await driver.put('/api/me/vehicle').set(H).send({ make: 'Hyundai', model: 'Venue', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'diesel', mileage: venue })
+    // Any car works: nothing about the car is needed for the fare (older apps still send mileage; it's ignored).
+    const car = await driver.put('/api/me/vehicle').set(H).send({ make: 'Skoda', model: 'Slavia', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'petrol', mileage: { city: 12 } })
     expect(car.status).toBe(200)
-    expect(car.body.vehicle.mileage).toEqual(venue)
-    expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Hyundai', model: 'Venue', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'diesel', mileage: { city: 500 } })).status).toBe(400)
+    expect(car.body.vehicle.mileage).toBeUndefined()
 
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
     const preview = await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })
     expect(preview.status).toBe(200)
-    expect(preview.body.ownMileage).toBe(true)
-    expect(preview.body.cost.total).toBeGreaterThan(0)
+    expect(preview.body.cost.total).toBe(Math.round(preview.body.cost.km * 7 + preview.body.cost.min * 1))
     expect(preview.body.shares).toHaveLength(3)
     expect(preview.body.shares[0].each).toBeGreaterThan(preview.body.shares[2].each)
 
@@ -173,14 +134,16 @@ describe('fair fares end to end', () => {
     expect(finalA.fare).toBeLessThan(paidA)
   })
 
-  it('lets the admin set fuel prices, which new trip costs use', async () => {
+  it('lets the admin set the fare rates, which new trip costs use', async () => {
     const admin = await student('fare.admin@vit.edu.in')
     const other = await student('fare.other@vit.edu.in')
-    expect((await other.get('/api/admin/fuel-prices')).status).toBe(403)
-    expect((await admin.get('/api/admin/fuel-prices')).body.prices).toEqual(fare.DEFAULT_FUEL_PRICES)
-    const put = await admin.put('/api/admin/fuel-prices').set(H).send({ diesel: 95 })
-    expect(put.body.prices).toMatchObject({ diesel: 95, petrol: fare.DEFAULT_FUEL_PRICES.petrol })
-    expect((await request(app).get('/api/config')).body.fare.fuelPrices.diesel).toBe(95)
-    expect((await admin.put('/api/admin/fuel-prices').set(H).send({ diesel: -1 })).status).toBe(400)
+    expect((await other.get('/api/admin/fare-rates')).status).toBe(403)
+    expect((await admin.get('/api/admin/fare-rates')).body.rates).toEqual(fare.DEFAULT_RATES)
+    const put = await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 8 })
+    expect(put.body.rates).toEqual({ perKm: 8, perMin: fare.DEFAULT_RATES.perMin })
+    expect((await request(app).get('/api/config')).body.fare.rates.perKm).toBe(8)
+    expect(fare.tripCost({ distanceKm: 10, durationMin: 20 }).total).toBe(10 * 8 + 20 * fare.DEFAULT_RATES.perMin)
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 0 })).status).toBe(400)
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perMin: 50 })).status).toBe(400)
   })
 })

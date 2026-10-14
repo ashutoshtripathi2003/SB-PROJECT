@@ -268,7 +268,7 @@ class _OverviewTab extends StatelessWidget {
           ('CO₂ saved', '${s.money.co2Kg} kg', false),
         ]),
         const SizedBox(height: 12),
-        const _FuelPrices(),
+        const _FareRates(),
       ];
     }
     return RefreshIndicator(
@@ -283,30 +283,30 @@ class _OverviewTab extends StatelessWidget {
       );
 }
 
-/// Today's fuel prices, used to work out every new trip's cost (fair fares).
-class _FuelPrices extends StatefulWidget {
-  const _FuelPrices();
+/// The two fare rates: every trip costs km × ₹ per km + minutes × ₹ per minute (fair fares).
+class _FareRates extends StatefulWidget {
+  const _FareRates();
   @override
-  State<_FuelPrices> createState() => _FuelPricesState();
+  State<_FareRates> createState() => _FareRatesState();
 }
 
-class _FuelPricesState extends State<_FuelPrices> {
-  static const _fuels = [('petrol', 'Petrol', '₹/litre'), ('diesel', 'Diesel', '₹/litre'), ('cng', 'CNG', '₹/kg'), ('ev', 'Electric', '₹/kWh')];
-  final Map<String, TextEditingController> _c = {for (final f in _fuels) f.$1: TextEditingController()};
+class _FareRatesState extends State<_FareRates> {
+  static const _fields = [('perKm', 'Per km', '₹/km', 1, 50), ('perMin', 'Per minute', '₹/min', 0, 10)];
+  final Map<String, TextEditingController> _c = {for (final f in _fields) f.$1: TextEditingController()};
   bool _loaded = false, _saving = false;
   String? _msg;
 
   @override
   void initState() {
     super.initState();
-    context.read<Session>().api.adminFuelPrices().then((p) {
+    context.read<Session>().api.adminFareRates().then((p) {
       if (!mounted) return;
       for (final e in p.entries) {
         _c[e.key]?.text = '${e.value}';
       }
       setState(() => _loaded = true);
     }).catchError((_) {
-      if (mounted) setState(() => _msg = 'Couldn’t load fuel prices.');
+      if (mounted) setState(() => _msg = 'Couldn’t load the fare rates.');
     });
   }
 
@@ -319,12 +319,15 @@ class _FuelPricesState extends State<_FuelPrices> {
   }
 
   Future<void> _save() async {
-    final body = {for (final e in _c.entries) e.key: num.tryParse(e.value.text.trim()) ?? 0};
-    if (body.values.any((v) => v < 1 || v > 500)) return setState(() => _msg = 'Each price must be between ₹1 and ₹500.');
+    final body = {for (final e in _c.entries) e.key: num.tryParse(e.value.text.trim()) ?? -1};
+    for (final f in _fields) {
+      final v = body[f.$1]!;
+      if (v < f.$4 || v > f.$5) return setState(() => _msg = '${f.$2} must be between ₹${f.$4} and ₹${f.$5}.');
+    }
     setState(() => (_saving = true, _msg = null));
     try {
-      await context.read<Session>().api.setFuelPrices(body);
-      if (mounted) setState(() => _msg = 'Saved. New trips use these prices.');
+      await context.read<Session>().api.setFareRates(body);
+      if (mounted) setState(() => _msg = 'Saved. New trips use these rates.');
     } catch (e) {
       if (mounted) setState(() => _msg = errorText(e));
     } finally {
@@ -337,11 +340,11 @@ class _FuelPricesState extends State<_FuelPrices> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Fuel prices', style: RS.heading(16)),
+            Text('Fare rates', style: RS.heading(16)),
             const SizedBox(height: 4),
-            const Text('Trip costs (and so every fare) use these. Update them when pump prices change.', style: TextStyle(color: RS.ink500, fontSize: 13)),
+            const Text('Every trip costs km × ₹ per km + minutes × ₹ per minute (minutes include the traffic), split equally among everyone in the car.', style: TextStyle(color: RS.ink500, fontSize: 13)),
             if (_loaded) ...[
-              for (final f in _fuels)
+              for (final f in _fields)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(children: [
@@ -350,7 +353,7 @@ class _FuelPricesState extends State<_FuelPrices> {
                   ]),
                 ),
               const SizedBox(height: 12),
-              LoadingButton(label: 'Save prices', loading: _saving, onPressed: _save),
+              LoadingButton(label: 'Save rates', loading: _saving, onPressed: _save),
             ],
             if (_msg != null) ...[const SizedBox(height: 8), Text(_msg!, style: const TextStyle(color: RS.ink500, fontSize: 13))],
           ]),

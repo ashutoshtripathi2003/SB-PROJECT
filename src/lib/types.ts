@@ -26,8 +26,6 @@ export type Vehicle = {
   plate: string
   seats: number // passenger seats excluding driver
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
-  /** The driver's own mileage per condition (km per L / kg / kWh); blanks use typical values. */
-  mileage?: { smooth?: number; city?: number; traffic?: number }
 }
 
 /** What other students can see about you. */
@@ -99,7 +97,7 @@ export type Ride = {
   womenOnly?: boolean
   /** 'share': the trip's real cost split equally among everyone in the car (fair fares); 'fixed': older rides. */
   fareMode?: 'fixed' | 'share'
-  /** Estimated cost of the whole trip (fuel + wear), and how it was worked out. */
+  /** Estimated cost of the whole trip (km × ₹ per km + minutes × ₹ per minute), and how it was worked out. */
   costTotal?: number
   costSummary?: string
 }

@@ -53,11 +53,10 @@ async function student(email: string, extra: Record<string, unknown> = {}) {
 describe('price at the start', () => {
   it('drops when the live traffic is lighter than forecast, and never goes up', async () => {
     const driver = await student('start.driver@vit.edu.in', { upiId: 'driver@okaxis' })
-    // No mileage typed: the Venue's typical figures are used.
     await driver.put('/api/me/vehicle').set(H).send({ make: 'Hyundai', model: 'Venue', color: 'Grey', plate: 'MH01AB9999', seats: 3, fuel: 'diesel' })
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
-    expect(preview.mileage).toMatchObject({ source: 'model', name: 'Hyundai Venue' })
+    expect(preview.cost).toMatchObject({ km: 25, min: 113, total: 25 * 7 + 113 })
     expect(preview.trafficDelayMin).toBe(55)
     const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [] })).body
 

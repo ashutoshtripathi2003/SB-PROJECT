@@ -206,16 +206,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                           ],
                         ]),
                         const SizedBox(height: 10),
-                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of what the trip really costs. ${cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.',
+                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of the trip’s cost, from its distance and its time in traffic. ${cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.',
                             style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
-                        const SizedBox(height: 6),
-                        Text(
-                            cost.mileageSource == 'own'
-                                ? 'Using your own mileage figures.'
-                                : cost.mileageSource == 'model'
-                                    ? 'Using typical ${cost.carName} mileage. If your car differs, change it in Profile → My car.'
-                                    : 'Using typical mileage for a ${vehicle.fuel == 'ev' ? 'electric' : vehicle.fuel} car. If your car differs, change it in Profile → My car.',
-                            style: const TextStyle(color: RS.ink700, fontSize: 12.5, height: 1.4)),
                       ]),
               ),
             ],

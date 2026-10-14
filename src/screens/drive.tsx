@@ -174,7 +174,7 @@ export function OfferRide() {
             <h2 className="section__title" style={{ padding: 0 }}>
               Trip cost, shared equally
             </h2>
-            <span className="t-sm t-muted">You don’t set a price. Everyone in the car, you included, pays an equal share of what the trip really costs.</span>
+            <span className="t-sm t-muted">You don’t set a price. Everyone in the car, you included, pays an equal share of the trip’s cost, worked out from its distance and its time in traffic.</span>
           </div>
           {cost ? (
             <div className="fare-box">
@@ -184,8 +184,8 @@ export function OfferRide() {
                   <span className="t-display tabular">{money(cost.cost.total)}</span>
                 </span>
                 <span className="stack" style={{ alignItems: 'flex-end' }}>
-                  <span className="t-sm t-muted">{cost.cost.fuelUsed} {cost.cost.unit} × {money(cost.cost.fuelPrice)}</span>
-                  <span className="t-sm t-muted">+ {money(cost.cost.wear)} tyres &amp; servicing</span>
+                  <span className="t-sm t-muted">{cost.cost.km} km × {money(cost.cost.perKm)}</span>
+                  <span className="t-sm t-muted">+ {cost.cost.min} min × {money(cost.cost.perMin)}</span>
                 </span>
               </div>
               <div className="cost-shares" aria-label="What each rider pays">
@@ -199,12 +199,6 @@ export function OfferRide() {
               <p className="cost-working">
                 {cost.cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.
                 {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
-              </p>
-              <p className="t-sm t-muted" style={{ marginTop: 8 }}>
-                {cost.mileage.source === 'own' ? 'Using your own mileage figures.' : cost.mileage.source === 'model' ? `Using typical ${cost.mileage.name} mileage.` : `Using typical mileage for a ${u.vehicle?.fuel === 'ev' ? 'electric' : u.vehicle?.fuel} car.`}{' '}
-                <button type="button" className="t-strong t-primary" onClick={() => setVehicleOpen(true)}>
-                  {cost.mileage.source === 'own' ? 'Change' : 'My car differs'}
-                </button>
               </p>
             </div>
           ) : (
