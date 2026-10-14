@@ -207,9 +207,8 @@ function Overview({ q }: { q: ReturnType<typeof useQuery<Stats>> }) {
   )
 }
 
-const RATE_FIELDS: { key: 'perKm' | 'perMin'; label: string; unit: string; hint: string }[] = [
-  { key: 'perKm', label: 'Per km', unit: '₹ / km', hint: 'Fuel, tyres and servicing for each km' },
-  { key: 'perMin', label: 'Per minute', unit: '₹ / min', hint: 'Extra fuel while crawling in traffic' },
+const RATE_FIELDS: { key: 'perSeatKm'; label: string; unit: string; hint: string }[] = [
+  { key: 'perSeatKm', label: 'Price per km per seat', unit: '₹ / km', hint: 'The suggested price for a seat is the route km × this' },
 ]
 
 /** The two fare rates: every trip costs km × ₹ per km + minutes × ₹ per minute (fair fares). */
@@ -229,7 +228,7 @@ function FareRates() {
   }, [])
   async function save() {
     if (!rates || !limits) return
-    const body = { perKm: Number(rates.perKm), perMin: Number(rates.perMin) }
+    const body = { perSeatKm: Number(rates.perSeatKm) }
     for (const f of RATE_FIELDS) {
       const l = limits[f.key]
       if (!(body[f.key] >= l.min && body[f.key] <= l.max)) return setMsg(`${f.label} must be between ₹${l.min} and ₹${l.max}.`)
@@ -245,11 +244,11 @@ function FareRates() {
       setSaving(false)
     }
   }
-  const example = rates ? Math.round(18 * Number(rates.perKm || 0) + 55 * Number(rates.perMin || 0)) : 0
+  const example = rates ? Math.max(30, Math.round((25 * Number(rates.perSeatKm || 0)) / 5) * 5) : 0
   return (
     <section className="admin-group">
       <h2 className="t-h3">Fare rates</h2>
-      <p className="t-sm t-muted">Every trip costs km × ₹ per km + minutes × ₹ per minute (minutes include the traffic). The cost is split equally among everyone in the car.</p>
+      <p className="t-sm t-muted">Like BlaBlaCar: RideSync suggests each ride's price per seat from its distance, and the driver can set half to one and a half times it (never below ₹30).</p>
       {rates ? (
         <div className="stack gap-2" style={{ marginTop: 8 }}>
           {RATE_FIELDS.map((f) => (
@@ -263,7 +262,7 @@ function FareRates() {
               <input className="input" style={{ width: 96, textAlign: 'right' }} inputMode="decimal" value={rates[f.key]} onChange={(e) => setRates({ ...rates, [f.key]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 5) })} aria-label={`${f.label} rate`} />
             </label>
           ))}
-          <p className="t-caption t-muted">Example: 18 km in 55 min = ₹{example} for the whole car.</p>
+          <p className="t-caption t-muted">Example: a 25 km ride is suggested at ₹{example} a seat.</p>
           <Button size="sm" loading={saving} onClick={save}>
             Save rates
           </Button>

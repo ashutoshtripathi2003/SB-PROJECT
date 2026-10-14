@@ -299,7 +299,7 @@ export function RideDetails() {
               <span>
                 {ride.fareMode === 'share'
                   ? `The trip costs about ${money(ride.costTotal ?? 0)}, from its distance and time${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter. Paid after ${firstName(driver.name)} accepts.`
-                  : `A fixed price set by ${firstName(driver.name)} within RideSync's fair limit (a full car never pays more than the trip costs). It never changes; if you ride part of the way you pay for your part, and ${firstName(driver.name)} pays their own share. Paid after ${firstName(driver.name)} accepts.`}
+                  : `A fixed price set by ${firstName(driver.name)}, like BlaBlaCar (RideSync suggests it from the distance). It never changes; if you ride part of the way you pay for your part. Paid after ${firstName(driver.name)} accepts.`}
               </span>
             </div>
           </div>

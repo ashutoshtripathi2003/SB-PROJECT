@@ -713,8 +713,8 @@ api.post(
     return {
       cost,
       mode: fareMode(),
-      // BlaBlaCar-style: the suggested price per seat and the range the driver may choose from.
-      seat: seatPrice(cost.total, p.seats),
+      // BlaBlaCar-style: the suggested price per seat (from the distance) and the range the driver may choose from.
+      seat: seatPrice(route.distanceKm),
       // What each rider would book at (with the cushion; it can drop at the start), and what is left for the driver.
       shares: shareTable(cost.total * CUSHION, p.seats).map((s) => ({ ...s, driver: driverShare(cost.total, s.riders * s.each) })),
       perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
@@ -760,14 +760,15 @@ api.post(
 
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
     // The trip's cost from its km and its minutes with the traffic forecast for the departure time.
-    const cost = tripCost(route)
     const mode = fareMode()
+    const cost = mode === 'share' ? tripCost(route) : null
     let farePerSeat: number
-    if (mode === 'seat') {
-      // BlaBlaCar-style: the driver's price per seat, kept within the fair range (the suggestion if none is given).
-      const range = seatPrice(cost.total, p.seats)
+    if (cost) farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
+    else {
+      // BlaBlaCar-style: the driver's price per seat, kept within the range (the suggestion if none is given).
+      const range = seatPrice(route.distanceKm)
       farePerSeat = p.farePerSeat == null ? range.suggested : Math.min(range.max, Math.max(range.min, Math.round(p.farePerSeat)))
-    } else farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
+    }
 
     const id = newId('r')
     run(
@@ -789,8 +790,8 @@ api.post(
       route.durationMin,
       p.womenOnly ? 1 : 0,
       mode === 'seat' ? 'fixed' : 'share',
-      cost.total,
-      JSON.stringify(cost),
+      cost?.total ?? null,
+      cost ? JSON.stringify(cost) : null,
       nowIso(),
     )
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
@@ -2005,6 +2006,7 @@ api.put(
     const p = parse(
       z
         .object({
+          perSeatKm: z.number().min(RATE_LIMITS.perSeatKm.min).max(RATE_LIMITS.perSeatKm.max),
           perKm: z.number().min(RATE_LIMITS.perKm.min).max(RATE_LIMITS.perKm.max),
           perMin: z.number().min(RATE_LIMITS.perMin.min).max(RATE_LIMITS.perMin.max),
         })

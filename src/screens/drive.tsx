@@ -182,7 +182,7 @@ export function OfferRide() {
               <h2 className="section__title" style={{ padding: 0 }}>
                 Price per seat
               </h2>
-              <span className="t-sm t-muted">Like BlaBlaCar: you choose the price, within a fair limit. Riders see it before booking and it never changes. You pay your own share of the trip.</span>
+              <span className="t-sm t-muted">Like BlaBlaCar: RideSync suggests a price from the distance and you can change it. Riders see it before booking and it never changes.</span>
             </div>
             <div className="fare-box">
               <div className="row row--between">
@@ -200,18 +200,8 @@ export function OfferRide() {
               <p className="t-sm t-muted t-center" style={{ marginTop: 8 }}>
                 {seatPrice === seat.suggested ? 'Suggested price' : <>Suggested {money(seat.suggested)} · <button type="button" className="t-strong t-primary" onClick={() => setPrice(null)}>use it</button></>} · you can set {money(seat.min)}–{money(seat.max)}
               </p>
-              <div className="cost-shares" aria-label="What you pay with each number of riders">
-                {Array.from({ length: draft.seats }, (_, i) => i + 1).map((n) => (
-                  <span key={n} className="cost-shares__item">
-                    <span className="t-caption t-muted">{plural(n, 'rider')}</span>
-                    <span className="t-caption t-muted">pay {money(n * seatPrice)}</span>
-                    <span className="t-body t-strong tabular">you {money(driverShare(cost.cost.total, n * seatPrice))}</span>
-                  </span>
-                ))}
-              </div>
               <p className="cost-working">
-                Trip cost about {money(cost.cost.total)} ({cost.cost.summary}). The suggestion is an equal share as if every seat were taken, you included. The most you can ask is {money(seat.max)}, so even a full car never pays more than the trip costs. Riders going only part of the way pay for their part.
-                {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
+                Suggested: {Math.round(cost.distanceKm)} km × {money(seat.perSeatKm)} a seat = {money(seat.suggested)}. Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
               </p>
             </div>
           </section>

@@ -28,12 +28,12 @@ void main() {
       'shares': [{'riders': 1, 'each': 100, 'driver': 81}, {'riders': 2, 'each': 65, 'driver': 51}],
       'perPersonIfFull': 65,
       'mode': 'seat',
-      'seat': {'suggested': 45, 'min': 30, 'max': 60},
+      'seat': {'suggested': 50, 'min': 30, 'max': 75, 'perSeatKm': 2},
       'trafficDelayMin': 20,
     });
     expect((c.total, c.km, c.min, c.perKm, c.perMin), (181, 18.0, 55, 7.0, 1.0));
     expect(c.shares.first, (1, 100, 81));
-    expect((c.mode, c.seatSuggested, c.seatMin, c.seatMax), ('seat', 45, 30, 60));
+    expect((c.mode, c.seatSuggested, c.seatMin, c.seatMax, c.seatPerKm), ('seat', 50, 30, 75, 2.0));
     expect(driverShare(181, 100), 81);
     expect(driverShare(100, 130), 0);
   });

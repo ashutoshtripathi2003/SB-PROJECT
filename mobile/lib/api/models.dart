@@ -361,8 +361,9 @@ class CostPreview {
   /// 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split.
   final String mode;
 
-  /// Suggested price per seat (whole route) and the range the driver may choose from.
+  /// Suggested price per seat (route km × [seatPerKm]) and the range the driver may choose from.
   final int seatSuggested, seatMin, seatMax;
+  final double seatPerKm;
   final double km, perKm, perMin;
   final String summary;
 
@@ -381,6 +382,7 @@ class CostPreview {
         seatSuggested = j['seat'] is Map ? _i((j['seat'] as Map)['suggested']) : 0,
         seatMin = j['seat'] is Map ? _i((j['seat'] as Map)['min']) : 0,
         seatMax = j['seat'] is Map ? _i((j['seat'] as Map)['max']) : 0,
+        seatPerKm = j['seat'] is Map ? _d((j['seat'] as Map)['perSeatKm']) : 0,
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']), _i(s['driver']))).toList();
 }
 
