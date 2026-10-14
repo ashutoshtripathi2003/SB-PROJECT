@@ -509,7 +509,8 @@ export type TripCost = {
 }
 export type CostPreview = {
   cost: TripCost
-  shares: { riders: number; each: number }[]
+  /** Each rider's price with 1, 2, … riders, and the driver's own share then. */
+  shares: { riders: number; each: number; driver: number }[]
   perPersonIfFull: number
   distanceKm: number
   durationMin: number

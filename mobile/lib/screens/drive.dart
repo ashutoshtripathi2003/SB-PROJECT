@@ -191,7 +191,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                         ]),
                         const SizedBox(height: 10),
                         Row(children: [
-                          for (final (i, (riders, each)) in cost.shares.indexed) ...[
+                          for (final (i, (riders, each, driver)) in cost.shares.indexed) ...[
                             if (i > 0) const SizedBox(width: 8),
                             Expanded(
                               child: Container(
@@ -200,6 +200,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                                 child: Column(children: [
                                   Text(money(each), style: RS.heading(16)),
                                   Text('each, $riders rider${riders == 1 ? '' : 's'}', style: const TextStyle(color: RS.ink500, fontSize: 11.5), textAlign: TextAlign.center),
+                                  Text('you pay ${money(driver)}', style: const TextStyle(color: RS.ink500, fontSize: 11.5), textAlign: TextAlign.center),
                                 ]),
                               ),
                             ),
@@ -354,6 +355,7 @@ class _DriveScreenState extends State<DriveScreen> {
     final api = context.read<Session>().api;
     final pending = d.bookings.where((b) => b.booking.status == 'pending').toList();
     final riders = d.bookings.where((b) => const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].contains(b.booking.status)).toList();
+    final ridersPay = riders.fold<int>(0, (s, r) => s + r.booking.fare);
     // Upcoming or under way: today's live route, coloured by traffic like Google Maps.
     final live = eta != null && eta.coords.length > 1;
     final bubble = eta == null ? null : etaPin(live ? eta.coords : ride.route, eta);
@@ -388,7 +390,14 @@ class _DriveScreenState extends State<DriveScreen> {
           Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: eta == null ? timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))) : '~${timeOf(eta.arrive)}')),
           const SizedBox(height: 8),
           Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${ride.shareFare && ride.costTotal != null ? 'trip cost ${money(ride.costTotal!)}, shared equally' : '${money(ride.farePerSeat)} per seat'}', style: const TextStyle(color: RS.ink500)),
-          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Fixed with the live traffic when you start.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+          if (ride.shareFare && ride.costTotal != null) ...[
+            const SizedBox(height: 6),
+            Text.rich(TextSpan(children: [
+              TextSpan(text: 'Your share ${money(driverShare(ride.costTotal!, ridersPay))}', style: const TextStyle(fontWeight: FontWeight.w700, color: RS.ink900)),
+              TextSpan(text: ' · Riders pay ${money(ridersPay)} · Trip cost ${money(ride.costTotal!)}', style: const TextStyle(color: RS.ink500)),
+            ])),
+          ],
+          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Split by the km each person rides, you included: you pay your share yourself.${ride.status == 'scheduled' ? ' Fixed with the live traffic when you start.' : ''}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
           if (ride.status == 'in_progress') ...[
             const SizedBox(height: 12),
             Notice(_gpsError ?? (_pos == null ? 'Starting GPS…' : 'Sharing your live location with riders. Keep RideSync open while driving.'), tone: _gpsError == null ? 'success' : 'warning', icon: Icons.my_location),

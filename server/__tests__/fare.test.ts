@@ -37,6 +37,12 @@ describe('trip cost', () => {
 })
 
 describe('equal split', () => {
+  it('leaves the driver their own share of the trip cost', () => {
+    expect(fare.driverShare(181, 100)).toBe(81)
+    expect(fare.driverShare(181, 80 + 45)).toBe(56)
+    expect(fare.driverShare(100, 130)).toBe(0) // never negative
+  })
+
   it('shares by person-km with the driver included', () => {
     // ₹420 trip, 25 km; A rides the whole way, B 11 km. Person-km: driver 25 + A 25 + B 11 = 61.
     const fares = fare.splitCost(420, 25, [
@@ -92,6 +98,9 @@ describe('fair fares end to end', () => {
     expect(preview.body.cost.total).toBe(Math.round(preview.body.cost.km * 7 + preview.body.cost.min * 1))
     expect(preview.body.shares).toHaveLength(3)
     expect(preview.body.shares[0].each).toBeGreaterThan(preview.body.shares[2].each)
+    // The driver pays their own share: whatever the riders don't cover.
+    for (const sh of preview.body.shares) expect(sh.driver).toBe(Math.max(0, preview.body.cost.total - sh.riders * sh.each))
+    expect(preview.body.shares[0].driver).toBeGreaterThan(0)
 
     const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [] })).body
     expect(ride).toMatchObject({ fareMode: 'share' })

@@ -350,6 +350,9 @@ class MatchResult {
         aiChance = j['aiChance'] is num ? _d(j['aiChance']) : null;
 }
 
+/// The driver's own share: the trip cost minus what the riders pay (same as the server's driverShare).
+int driverShare(int cost, int ridersPay) => cost > ridersPay ? cost - ridersPay : 0;
+
 /// Driver's preview of a trip's cost (fair fares).
 class CostPreview {
   /// total = km × perKm + min × perMin.
@@ -357,8 +360,8 @@ class CostPreview {
   final double km, perKm, perMin;
   final String summary;
 
-  /// What each rider pays with 1, 2, … riders going the whole way.
-  final List<(int riders, int each)> shares;
+  /// What each rider pays with 1, 2, … riders going the whole way, and the driver's own share then.
+  final List<(int riders, int each, int driver)> shares;
   CostPreview.fromJson(Map<String, dynamic> j)
       : total = _i((j['cost'] as Map)['total']),
         min = _i((j['cost'] as Map)['min']),
@@ -368,7 +371,7 @@ class CostPreview {
         summary = _s((j['cost'] as Map)['summary']),
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
-        shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']))).toList();
+        shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']), _i(s['driver']))).toList();
 }
 
 class FeedItem {

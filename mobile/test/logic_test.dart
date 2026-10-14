@@ -25,12 +25,14 @@ void main() {
   test('the driver’s cost preview is read from the server', () {
     final c = CostPreview.fromJson({
       'cost': {'total': 181, 'km': 18, 'min': 55, 'perKm': 7, 'perMin': 1, 'summary': '18 km × ₹7 + 55 min × ₹1 = ₹181'},
-      'shares': [{'riders': 1, 'each': 100}, {'riders': 2, 'each': 65}],
+      'shares': [{'riders': 1, 'each': 100, 'driver': 81}, {'riders': 2, 'each': 65, 'driver': 51}],
       'perPersonIfFull': 65,
       'trafficDelayMin': 20,
     });
     expect((c.total, c.km, c.min, c.perKm, c.perMin), (181, 18.0, 55, 7.0, 1.0));
-    expect(c.shares.first, (1, 100));
+    expect(c.shares.first, (1, 100, 81));
+    expect(driverShare(181, 100), 81);
+    expect(driverShare(100, 130), 0);
   });
 
   test('server links are cleaned up', () {
