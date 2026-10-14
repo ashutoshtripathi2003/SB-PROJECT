@@ -165,7 +165,7 @@ class _FindTabState extends State<FindTab> {
                 IconButton(onPressed: _seats > 1 ? () => setState(() => _seats--) : null, icon: const Icon(Icons.remove)),
                 Text('$_seats', style: RS.heading(16)),
                 const Icon(Icons.person_outline, size: 18, color: RS.ink500),
-                IconButton(onPressed: _seats < 6 ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add)),
+                IconButton(onPressed: _seats < maxSeats ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add)),
               ]),
             ),
           ]),

@@ -317,7 +317,7 @@ No laptop handy? Open the website in Safari → **Share** → **Add to Home Scre
 - live trip status
 - payment by UPI (opens GPay/PhonePe/Paytm) or cash
 - the driver's live GPS on the map
-- Offer a ride with a price per seat, BlaBlaCar-style: suggested from the distance (km × ₹2), adjustable from half to 1.5× (at least ₹30)
+- Offer a ride with a price per seat, BlaBlaCar-style: suggested from the distance (km × a rate that follows the real petrol price: petrol ÷ 15 km/L ÷ 4 people ≈ ₹1.85), adjustable from half to 1.5× (at least ₹30)
 - driver controls (accept/decline, start, arrived, picked up, dropped off, complete)
 - chat, notifications, My Rides, payments
 - SOS (112 and a text to your emergency contacts) and ratings
@@ -373,7 +373,7 @@ Production must be served over **HTTPS**. Login cookies are marked secure, and p
 |---|---|
 | Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 90-day httpOnly session cookie. |
 | Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
-| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), suggests a price per seat from the distance, exactly like BlaBlaCar (route km × ₹2 per seat, admin-settable, at least ₹30). The driver can set half to 1.5× of it; the price is fixed once published, riders going part of the way pay for their part, and there is no platform fee (`server/fare.ts`). Every online student's search and Home feed refresh straight away. |
+| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), suggests a price per seat from the distance, exactly like BlaBlaCar (route km × ₹ per km per seat, at least ₹30). The rate follows the real petrol price automatically: `server/fuel.ts` reads today's Mumbai price every 6 hours, and rate = petrol ÷ 15 km/L ÷ 4 people (₹111.21 → ₹1.85); the admin can set their own instead. The driver can set half to 1.5× of it; the price is fixed once published, riders going part of the way pay for their part, and there is no platform fee (`server/fare.ts`). Every online student's search and Home feed refresh straight away. |
 | Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
 | Book | The rider requests a seat and the driver gets a live notification. The driver accepts or declines, and seats can't be overbooked. |
 | Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**, or **pay online** when Razorpay is set up. The driver can mark UPI or cash payment as received. |

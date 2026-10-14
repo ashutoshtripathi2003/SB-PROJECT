@@ -283,7 +283,8 @@ class _OverviewTab extends StatelessWidget {
       );
 }
 
-/// The two fare rates: every trip costs km × ₹ per km + minutes × ₹ per minute (fair fares).
+/// Fare rate: ₹ per km per seat (suggested price = route km × it). Automatic by default: it follows
+/// today's petrol price (÷ 15 km/L ÷ 4 people); the admin can type their own instead, and switch back.
 class _FareRates extends StatefulWidget {
   const _FareRates();
   @override
@@ -291,74 +292,102 @@ class _FareRates extends StatefulWidget {
 }
 
 class _FareRatesState extends State<_FareRates> {
-  static const _fields = [('perSeatKm', 'Price per km per seat', '₹/km', 0.5, 10)];
-  final Map<String, TextEditingController> _c = {for (final f in _fields) f.$1: TextEditingController()};
-  bool _loaded = false, _saving = false;
-  String? _msg;
+  final _own = TextEditingController();
+  Map<String, dynamic>? _r;
+  String? _busy, _msg;
 
   @override
   void initState() {
     super.initState();
-    context.read<Session>().api.adminFareRates().then((p) {
-      if (!mounted) return;
-      for (final e in p.entries) {
-        _c[e.key]?.text = '${e.value}';
-      }
-      setState(() => _loaded = true);
-    }).catchError((_) {
-      if (mounted) setState(() => _msg = 'Couldn’t load the fare rates.');
+    context.read<Session>().api.adminFareRates().then(_show).catchError((_) {
+      if (mounted) setState(() => _msg = 'Couldn’t load the fare rate.');
     });
+  }
+
+  void _show(Map<String, dynamic> r) {
+    if (!mounted) return;
+    setState(() => _r = r);
+    _own.text = '${(r['rates'] as Map)['perSeatKm']}';
   }
 
   @override
   void dispose() {
-    for (final c in _c.values) {
-      c.dispose();
-    }
+    _own.dispose();
     super.dispose();
   }
 
-  Future<void> _save() async {
-    final body = {for (final e in _c.entries) e.key: num.tryParse(e.value.text.trim()) ?? -1};
-    for (final f in _fields) {
-      final v = body[f.$1]!;
-      if (v < f.$4 || v > f.$5) return setState(() => _msg = '${f.$2} must be between ₹${f.$4} and ₹${f.$5}.');
+  Future<void> _act(String kind) async {
+    final api = context.read<Session>().api;
+    final limit = ((_r!['limits'] as Map)['perSeatKm'] as Map).cast<String, num>();
+    final value = num.tryParse(_own.text.trim()) ?? -1;
+    if (kind == 'save' && (value < limit['min']! || value > limit['max']!)) {
+      return setState(() => _msg = 'The rate must be between ₹${limit['min']} and ₹${limit['max']}.');
     }
-    setState(() => (_saving = true, _msg = null));
+    setState(() => (_busy = kind, _msg = null));
     try {
-      await context.read<Session>().api.setFareRates(body);
-      if (mounted) setState(() => _msg = 'Saved. New trips use these rates.');
+      if (kind == 'refresh') {
+        final r = await api.refreshFuelPrice();
+        _show(r);
+        final petrol = (r['fuel'] as Map)['petrol'];
+        if (mounted) setState(() => _msg = r['refreshed'] == true ? 'Read today’s petrol price: ₹$petrol a litre.' : 'Couldn’t reach the fuel-price websites; still using the last price.');
+      } else {
+        _show(await api.setFareRates(kind == 'save' ? {'perSeatKm': value} : {'auto': true}));
+        if (mounted) setState(() => _msg = kind == 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow the petrol price.');
+      }
     } catch (e) {
       if (mounted) setState(() => _msg = errorText(e));
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _busy = null);
     }
   }
 
   @override
-  Widget build(BuildContext context) => Card(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Fare rates', style: RS.heading(16)),
+  Widget build(BuildContext context) {
+    final r = _r;
+    final fuel = r == null ? null : (r['fuel'] as Map).cast<String, dynamic>();
+    final rate = r == null ? 0 : ((r['rates'] as Map)['perSeatKm'] as num);
+    final example = math.max(30, ((25 * rate) / 5).round() * 5);
+    final at = fuel?['at'] == null ? '' : ', ${DateFormat('d MMM, h:mm a').format(DateTime.parse(fuel!['at'] as String).toLocal())}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Fare rate', style: RS.heading(16)),
+          const SizedBox(height: 4),
+          const Text('Like BlaBlaCar: each ride’s suggested price per seat is its distance × this rate, and the driver can set half to one and a half times it (never below ₹30).', style: TextStyle(color: RS.ink500, fontSize: 13)),
+          if (r != null && fuel != null) ...[
+            const SizedBox(height: 10),
+            Row(children: [
+              const Expanded(child: Text('Price per km per seat', style: TextStyle(color: RS.ink700))),
+              Pill(r['auto'] == true ? 'Automatic' : 'Set by admin'),
+              const SizedBox(width: 8),
+              Text('₹$rate', style: const TextStyle(fontWeight: FontWeight.w600)),
+            ]),
+            const SizedBox(height: 6),
+            Text(
+              'Petrol today: ₹${fuel['petrol']} a litre (${fuel['source']}$at). ₹${fuel['petrol']} ÷ ${fuel['kmPerLitre']} km/L ÷ ${fuel['people']} people = ₹${fuel['perSeatKm']} per km per seat. The server reads it every 6 hours.',
+              style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.35),
+            ),
             const SizedBox(height: 4),
-            const Text('Like BlaBlaCar: each ride’s suggested price per seat is its distance × this rate, and the driver can set half to one and a half times it (never below ₹30).', style: TextStyle(color: RS.ink500, fontSize: 13)),
-            if (_loaded) ...[
-              for (final f in _fields)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(children: [
-                    Expanded(child: Text('${f.$2}  ·  ${f.$3}', style: const TextStyle(color: RS.ink700))),
-                    SizedBox(width: 90, child: TextField(controller: _c[f.$1], textAlign: TextAlign.right, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(isDense: true))),
-                  ]),
-                ),
-              const SizedBox(height: 12),
-              LoadingButton(label: 'Save rates', loading: _saving, onPressed: _save),
-            ],
-            if (_msg != null) ...[const SizedBox(height: 8), Text(_msg!, style: const TextStyle(color: RS.ink500, fontSize: 13))],
-          ]),
-        ),
-      );
+            Text('Example: a 25 km ride is suggested at ₹$example a seat.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 4, children: [
+              OutlinedButton(onPressed: _busy == null ? () => _act('refresh') : null, child: Text(_busy == 'refresh' ? 'Reading…' : 'Read petrol price now')),
+              if (r['auto'] != true) OutlinedButton(onPressed: _busy == null ? () => _act('auto') : null, child: Text(_busy == 'auto' ? 'Saving…' : 'Use automatic rate')),
+            ]),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Expanded(child: Text('Or set your own  ·  ₹/km\nStops following the petrol price until you switch back', style: TextStyle(color: RS.ink700, fontSize: 13))),
+              SizedBox(width: 90, child: TextField(controller: _own, textAlign: TextAlign.right, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(isDense: true))),
+            ]),
+            const SizedBox(height: 12),
+            LoadingButton(label: 'Save my rate', loading: _busy == 'save', onPressed: () => _act('save')),
+          ],
+          if (_msg != null) ...[const SizedBox(height: 8), Text(_msg!, style: const TextStyle(color: RS.ink500, fontSize: 13))],
+        ]),
+      ),
+    );
+  }
 }
 
 class _Tile extends StatelessWidget {

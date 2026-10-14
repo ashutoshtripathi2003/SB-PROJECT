@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Vehicle } from '@/lib/types'
-import { formatPlate, validatePlate } from '@/lib/validation'
+import { MAX_SEATS, formatPlate, validatePlate } from '@/lib/validation'
 import { Button, Field, Notice, Segmented, Stepper } from './ui'
 
 export type VehicleDraft = Omit<Vehicle, 'id'>
@@ -73,7 +73,7 @@ export function VehicleForm({
           <span className="t-body t-strong">Seats for riders</span>
           <span className="t-sm t-muted">Not counting the driver</span>
         </div>
-        <Stepper label="Seats" value={v.seats} min={1} max={6} onChange={(n) => setV({ ...v, seats: n })} />
+        <Stepper label="Seats" value={v.seats} min={1} max={MAX_SEATS} onChange={(n) => setV({ ...v, seats: n })} />
       </div>
       <div className="field">
         <span className="field__label">Fuel</span>

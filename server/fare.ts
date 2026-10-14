@@ -1,9 +1,12 @@
 import { db, one, run } from './db'
+import { DEFAULT_PETROL, fuelPrice, perSeatKmFromPetrol } from './fuel'
 
 /**
  * Fares, exactly the BlaBlaCar way: a fixed price per seat that the driver sets.
  *
- *   suggested price = route km × ₹ per km per seat (₹2 by default, set by the admin)
+ *   suggested price = route km × ₹ per km per seat
+ *   ₹ per km per seat = today's petrol price ÷ 15 km/L ÷ 4 people (automatic, see fuel.ts; ₹111.21 → ₹1.85),
+ *                       or a rate the admin types in instead
  *   driver may set  = half to one and a half times the suggestion, never below ₹30
  *   a rider pays    = the seat price for the part of the route they ride (matching: at least 40% of it)
  *
@@ -16,7 +19,7 @@ import { db, one, run } from './db'
 /** perSeatKm: ₹ per km per seat (the BlaBlaCar-style suggestion). perKm / perMin: the earlier trip-cost design. */
 export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
 
-export const DEFAULT_RATES: FareRates = { perSeatKm: 2, perKm: 7, perMin: 1 }
+export const DEFAULT_RATES: FareRates = { perSeatKm: perSeatKmFromPetrol(DEFAULT_PETROL), perKm: 7, perMin: 1 }
 /** What the admin may set them to. */
 export const RATE_LIMITS = { perSeatKm: { min: 0.5, max: 10 }, perKm: { min: 1, max: 50 }, perMin: { min: 0, max: 10 } }
 
@@ -26,17 +29,37 @@ export const MIN_FARE = 30
 
 db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`)
 
-export function fareRates(): FareRates {
+/** What is stored: the rates, and whether ₹ per km per seat follows the petrol price (the default). */
+type Stored = Partial<FareRates> & { perSeatKmAuto?: boolean }
+
+function stored(): Stored {
   const row = one<{ value: string }>(`SELECT value FROM settings WHERE key = 'fare_rates'`)
   try {
-    return { ...DEFAULT_RATES, ...(row ? (JSON.parse(row.value) as Partial<FareRates>) : {}) }
+    return row ? (JSON.parse(row.value) as Stored) : {}
   } catch {
-    return { ...DEFAULT_RATES }
+    return {}
   }
 }
 
-export function setFareRates(p: Partial<FareRates>) {
-  run(`INSERT INTO settings (key, value) VALUES ('fare_rates', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, JSON.stringify({ ...fareRates(), ...p }))
+/** True when ₹ per km per seat follows the real petrol price; false when the admin has set it. */
+export const perSeatKmAuto = () => stored().perSeatKmAuto !== false
+
+const clampRate = (n: number) => Math.min(RATE_LIMITS.perSeatKm.max, Math.max(RATE_LIMITS.perSeatKm.min, n))
+
+export function fareRates(): FareRates {
+  const s = stored()
+  const rates = { ...DEFAULT_RATES, perKm: s.perKm ?? DEFAULT_RATES.perKm, perMin: s.perMin ?? DEFAULT_RATES.perMin }
+  rates.perSeatKm = s.perSeatKmAuto === false && s.perSeatKm != null ? s.perSeatKm : clampRate(perSeatKmFromPetrol(fuelPrice().petrol))
+  return rates
+}
+
+/** Saves rates. Setting perSeatKm switches it to the admin's own rate; `auto: true` hands it back to the petrol price. */
+export function setFareRates(p: Partial<FareRates> & { auto?: boolean }) {
+  const { auto, ...rates } = p
+  const next: Stored = { ...stored(), ...rates }
+  if (auto != null) next.perSeatKmAuto = auto
+  else if (rates.perSeatKm != null) next.perSeatKmAuto = false
+  run(`INSERT INTO settings (key, value) VALUES ('fare_rates', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, JSON.stringify(next))
 }
 
 export type RouteLike = { distanceKm: number; durationMin: number; trafficDelayMin?: number }

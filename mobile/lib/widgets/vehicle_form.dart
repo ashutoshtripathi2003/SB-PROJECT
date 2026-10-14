@@ -87,7 +87,7 @@ class VehicleFormState extends State<VehicleForm> {
             width: 36,
             child: Text('$_seats', textAlign: TextAlign.center, style: RS.heading(18)),
           ),
-          IconButton.outlined(onPressed: _seats < 7 ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add)),
+          IconButton.outlined(onPressed: _seats < maxSeats ? () => setState(() => _seats++) : null, icon: const Icon(Icons.add)),
         ],
       ),
       const SizedBox(height: 14),

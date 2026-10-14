@@ -468,7 +468,7 @@ function Safety() {
 }
 
 const FAQ = [
-  ['How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (₹2 per km), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'],
+  ['How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (about ₹1.85 per km at today’s petrol price; it follows the real petrol price automatically), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'],
   ['What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this ride?” on any ride to see the breakdown.'],
   ['What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'],
   ['Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'],

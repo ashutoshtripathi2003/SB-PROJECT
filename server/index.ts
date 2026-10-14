@@ -10,11 +10,19 @@ import { trainAll } from './ml/models'
 import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 import { checkBasemap } from './basemap'
 import { pushConfigured, pushProject } from './push'
+import { refreshFuelPrice } from './fuel'
 
 const app = createApp()
 // Machine-learning models: train shortly after start-up, then every 30 minutes on new data.
 setTimeout(trainAll, 3000)
 setInterval(trainAll, 30 * 60_000)
+// Today's petrol price (sets the suggested price per seat): at start-up, then every 6 hours.
+const readFuel = () =>
+  refreshFuelPrice()
+    .then((r) => console.log(r.ok ? `[ridesync] petrol ₹${r.price.petrol}/L (${r.price.source}) → fares follow it` : `[ridesync] ⚠ couldn't read today's petrol price; using ₹${r.price.petrol}/L from ${r.price.at ? r.price.at.slice(0, 10) : 'the built-in value'}`))
+    .catch(() => {})
+setTimeout(readFuel, 5000)
+setInterval(readFuel, 6 * 3600_000)
 // 15-minute ride reminders.
 setInterval(() => {
   try {

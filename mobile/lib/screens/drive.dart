@@ -36,7 +36,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   Place _from = campus;
   Place? _to;
   DateTime _at = defaultDeparture();
-  late int _seats = (context.read<Session>().user!.vehicle?.seats ?? 3).clamp(1, 4);
+  late int _seats = (context.read<Session>().user!.vehicle?.seats ?? 3).clamp(1, maxSeats);
   double _detour = 2;
   final Set<String> _prefs = {};
   bool _womenOnly = false;
@@ -180,7 +180,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                 const Expanded(child: Text('Seats to offer', style: TextStyle(fontWeight: FontWeight.w600))),
                 IconButton.outlined(onPressed: _seats > 1 ? () => _setSeats(_seats - 1) : null, icon: const Icon(Icons.remove)),
                 SizedBox(width: 36, child: Text('$_seats', textAlign: TextAlign.center, style: RS.heading(18))),
-                IconButton.outlined(onPressed: _seats < vehicle.seats ? () => _setSeats(_seats + 1) : null, icon: const Icon(Icons.add)),
+                IconButton.outlined(onPressed: _seats < vehicle.seats && _seats < maxSeats ? () => _setSeats(_seats + 1) : null, icon: const Icon(Icons.add)),
               ]),
             ),
             if (_routing) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
@@ -207,7 +207,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                   if (_seatPrice != cost.seatSuggested) Center(child: TextButton(onPressed: () => setState(() => _price = null), child: const Text('Use the suggested price'))),
                   const SizedBox(height: 10),
                   Text(
-                    'Like BlaBlaCar: suggested ${km(_route!.distanceKm)} × ${money(cost.seatPerKm)} a seat = ${money(cost.seatSuggested)}; you can change it. Riders see the price before booking and it never changes. Riders going only part of the way pay for their part (at least ₹30). With every seat taken you receive ${money(_seats * _seatPrice!)}.',
+                    'Like BlaBlaCar: suggested ${km(_route!.distanceKm)} × ₹${cost.seatPerKm.toStringAsFixed(2).replaceAll(RegExp(r"\.?0+$"), "")} a seat (from today’s petrol price) = ${money(cost.seatSuggested)}; you can change it. Riders see the price before booking and it never changes. Riders going only part of the way pay for their part (at least ₹30). With every seat taken you receive ${money(_seats * _seatPrice!)}.',
                     style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4),
                   ),
                 ]),

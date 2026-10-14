@@ -83,12 +83,12 @@ describe('full ride between two devices', () => {
     const offer = { origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 60, maxDetourKm: 3, preferences: ['no_smoking'] }
     expect((await driver.post('/api/rides').set(H).send(offer)).status).toBe(400)
     expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Honda', model: 'City', color: 'White', plate: 'MH01AB1234', seats: 3, fuel: 'petrol' })).status).toBe(200)
-    // BlaBlaCar-style: the driver's price per seat is kept within the range (at most 1.5 × distance × ₹2),
+    // BlaBlaCar-style: the driver's price per seat is kept within the range (at most 1.5 × distance × ₹1.85, the rate from the built-in petrol price),
     // so ₹2000 is brought down to the top of the range.
     const pub = await driver.post('/api/rides').set(H).send({ ...offer, farePerSeat: 2000 })
     expect(pub.status).toBe(200)
     expect(pub.body.fareMode).toBeUndefined()
-    const suggested = Math.max(30, Math.round((pub.body.distanceKm * 2) / 5) * 5)
+    const suggested = Math.max(30, Math.round((pub.body.distanceKm * 1.85) / 5) * 5)
     expect(pub.body.farePerSeat).toBe(Math.max(suggested, Math.round((suggested * 1.5) / 5) * 5))
     const rideId = pub.body.id
 

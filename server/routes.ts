@@ -50,7 +50,8 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, perSeatKmAuto, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { KM_PER_LITRE, PEOPLE, fuelPrice, perSeatKmFromPetrol, refreshFuelPrice } from './fuel'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -89,6 +90,8 @@ const PlaceZ = z.object({
   lng: z.number().min(-180).max(180),
   kind: z.enum(['campus', 'station', 'airport', 'area', 'custom']).optional(),
 })
+/** Most rider seats a car can offer or a rider can book: a 7-seater (Innova, Ertiga) is the driver + 6. */
+const MAX_SEATS = 6
 const PrefZ = z.enum(['quiet', 'female_friendly', 'no_smoking', 'no_pets', 'minimal_detour', 'music_ok', 'ac'])
 const QueryZ = z.object({
   pickup: PlaceZ,
@@ -96,7 +99,7 @@ const QueryZ = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^\d{2}:\d{2}$/),
   at: z.string().datetime().optional(),
-  seats: z.number().int().min(1).max(6),
+  seats: z.number().int().min(1).max(MAX_SEATS),
   preferences: z.array(PrefZ).max(7).default([]),
 })
 
@@ -287,7 +290,7 @@ api.put(
         model: z.string().trim().min(1, 'Enter the model').max(40),
         color: z.string().trim().min(1, 'Enter the colour').max(30),
         plate: z.string().trim().max(20),
-        seats: z.number().int().min(1).max(7),
+        seats: z.number().int().min(1).max(MAX_SEATS),
         fuel: z.enum(['petrol', 'diesel', 'cng', 'ev']),
         // Sent by older apps (fares used to depend on the car's mileage); no longer used.
         mileage: z.unknown().optional(),
@@ -705,7 +708,7 @@ api.post(
   '/rides/cost-preview',
   requireOnboarded,
   h(async (req) => {
-    const p = parse(z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(7) }), req.body)
+    const p = parse(z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(MAX_SEATS) }), req.body)
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
@@ -734,7 +737,7 @@ api.post(
         origin: PlaceZ,
         destination: PlaceZ,
         departAt: z.string().datetime(),
-        seats: z.number().int().min(1).max(7),
+        seats: z.number().int().min(1).max(MAX_SEATS),
         farePerSeat: z.number().int().min(0).max(5000).optional(),
         maxDetourKm: z.number().min(0).max(10),
         preferences: z.array(PrefZ).max(7).default([]),
@@ -1994,7 +1997,7 @@ api.get(
   requireUser,
   h((req) => {
     requireAdmin(req)
-    return { rates: fareRates(), limits: RATE_LIMITS }
+    return fareRatesReport()
   }),
 )
 
@@ -2009,14 +2012,31 @@ api.put(
           perSeatKm: z.number().min(RATE_LIMITS.perSeatKm.min).max(RATE_LIMITS.perSeatKm.max),
           perKm: z.number().min(RATE_LIMITS.perKm.min).max(RATE_LIMITS.perKm.max),
           perMin: z.number().min(RATE_LIMITS.perMin.min).max(RATE_LIMITS.perMin.max),
+          auto: z.boolean(),
         })
         .partial(),
       req.body,
     )
     setFareRates(p)
-    return { rates: fareRates(), limits: RATE_LIMITS }
+    return fareRatesReport()
   }),
 )
+
+/** Reads today's petrol price now (the server also does it every 6 hours). */
+api.post(
+  '/admin/fuel-price/refresh',
+  requireUser,
+  h(async (req) => {
+    requireAdmin(req)
+    const r = await refreshFuelPrice()
+    return { ...fareRatesReport(), refreshed: r.ok }
+  }),
+)
+
+function fareRatesReport() {
+  const fuel = fuelPrice()
+  return { rates: fareRates(), limits: RATE_LIMITS, auto: perSeatKmAuto(), fuel: { ...fuel, kmPerLitre: KM_PER_LITRE, people: PEOPLE, perSeatKm: perSeatKmFromPetrol(fuel.petrol) } }
+}
 
 api.post(
   '/admin/ml/train',

@@ -8,6 +8,7 @@ import { Avatar, Badge, Button, Rating, Skeleton } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { dayTime, firstName, money, time } from '@/lib/format'
 import type { OfferedItem, SearchQuery, TripItem } from '@/lib/types'
+import { MAX_SEATS } from '@/lib/validation'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { LIVE_STATUSES, Q, useMe, useQuery, type Badges, type FeedItem, type Trips } from '@/services/api'
 import { defaultQuery, useSearch } from '@/state/search'
@@ -81,7 +82,7 @@ export function Home() {
       }
     >
       <div className="stack gap-4">
-        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? u.vehicle?.seats ?? 4 : 4} />
+        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? Math.min(u.vehicle?.seats ?? 4, MAX_SEATS) : MAX_SEATS} />
         <div className="stack gap-2">
           <Button size="lg" block onClick={() => submit()} icon={mode === 'offer' ? <CarFront /> : <Search />}>
             {mode === 'offer' ? 'Offer a ride' : 'Find a ride'}
