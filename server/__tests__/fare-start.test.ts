@@ -7,6 +7,8 @@ process.env.DEV_LOGIN = 'true'
 process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
 process.env.OSRM_URL = 'http://127.0.0.1:9'
 process.env.TOMTOM_KEY = 'test-key'
+// Compare TomTom's forecast with its live traffic only; the Mumbai minimum speed would make this depend on the hour the tests run.
+process.env.CITY_SPEED_FLOOR = 'off'
 
 // TomTom: the forecast for the departure time says rush hour (113 min, 58 min on empty roads);
 // the live traffic when the driver starts is clear (58 min).

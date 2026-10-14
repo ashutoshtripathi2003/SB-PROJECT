@@ -77,7 +77,7 @@ async function orsRoute(a: LatLng, b: LatLng): Promise<Route> {
  * Weekends are lighter: Sunday has no office rush at all.
  */
 const MUMBAI_KMH: Record<Day, Record<Band, number>> = {
-  weekday: { rush: 17, day: 20, evening: 24, night: 32 },
+  weekday: { rush: 15, day: 20, evening: 24, night: 32 },
   saturday: { rush: 20, day: 21, evening: 24, night: 32 },
   sunday: { rush: 24, day: 24, evening: 26, night: 34 },
 }

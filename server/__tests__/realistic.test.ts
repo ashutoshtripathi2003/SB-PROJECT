@@ -71,10 +71,10 @@ describe('Realistic Mumbai trip times', () => {
   })
 
   it('never promises faster than city traffic allows', () => {
-    // 3 km: at least ~6 min even at night, ~13 min in the evening rush.
+    // 3 km: at least ~6 min even at night, ~14 min in the evening rush.
     expect(cityFloorMin(3, new Date('2026-10-10T03:00:00+05:30'))).toBeGreaterThanOrEqual(6)
     // Thursday 8 Oct 2026: weekday rush and daytime.
-    expect(cityFloorMin(3, new Date('2026-10-08T18:30:00+05:30'))).toBe(13)
+    expect(cityFloorMin(3, new Date('2026-10-08T18:30:00+05:30'))).toBe(14)
     expect(cityFloorMin(3, new Date('2026-10-08T12:00:00+05:30'))).toBe(11)
   })
 
@@ -83,7 +83,7 @@ describe('Realistic Mumbai trip times', () => {
     const thuRush = cityFloorMin(km, new Date('2026-10-08T18:00:00+05:30'))
     const sunEvening = cityFloorMin(km, new Date('2026-10-11T18:00:00+05:30'))
     const sunNight = cityFloorMin(km, new Date('2026-10-11T23:30:00+05:30'))
-    expect(thuRush).toBe(57)
+    expect(thuRush).toBe(64)
     expect(sunEvening).toBe(41)
     expect(sunNight).toBe(29)
   })
