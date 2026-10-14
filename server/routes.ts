@@ -277,7 +277,6 @@ api.patch(
   }),
 )
 
-
 api.put(
   '/me/vehicle',
   requireUser,
