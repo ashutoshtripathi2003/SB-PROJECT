@@ -509,6 +509,10 @@ export type TripCost = {
 }
 export type CostPreview = {
   cost: TripCost
+  /** 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split. */
+  mode: 'seat' | 'share'
+  /** The suggested price per seat (whole route) and the range the driver may choose from. */
+  seat: { suggested: number; min: number; max: number }
   /** Each rider's price with 1, 2, … riders, and the driver's own share then. */
   shares: { riders: number; each: number; driver: number }[]
   perPersonIfFull: number

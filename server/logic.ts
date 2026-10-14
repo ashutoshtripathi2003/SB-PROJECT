@@ -145,9 +145,9 @@ export function toRide(r: Row, opts: { location?: boolean } = {}): Ride {
     route: json(r.route, []),
     driverLocation: opts.location ? json(r.driver_location, undefined) : undefined,
     womenOnly: Number(r.women_only) ? true : undefined,
-    ...(r.fare_mode === 'share'
-      ? { fareMode: 'share' as const, costTotal: Number(r.cost_final ?? r.cost_total), costSummary: json<{ summary?: string }>(r.cost_detail, {}).summary }
-      : {}),
+    ...(r.fare_mode === 'share' ? { fareMode: 'share' as const } : {}),
+    // The trip's cost (any ride priced by distance + time), so the driver can see their own share.
+    ...(r.cost_total != null ? { costTotal: Number(r.cost_final ?? r.cost_total), costSummary: json<{ summary?: string }>(r.cost_detail, {}).summary } : {}),
   }
 }
 

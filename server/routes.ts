@@ -50,7 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CUSHION, RATE_LIMITS, driverShare, fareRates, perPersonIfFull, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -110,7 +110,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', rates: fareRates(), cushion: CUSHION } })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: fareMode(), rates: fareRates(), cushion: CUSHION } })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -712,6 +712,9 @@ api.post(
     const cost = tripCost(route)
     return {
       cost,
+      mode: fareMode(),
+      // BlaBlaCar-style: the suggested price per seat and the range the driver may choose from.
+      seat: seatPrice(cost.total, p.seats),
       // What each rider would book at (with the cushion; it can drop at the start), and what is left for the driver.
       shares: shareTable(cost.total * CUSHION, p.seats).map((s) => ({ ...s, driver: driverShare(cost.total, s.riders * s.each) })),
       perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
@@ -756,15 +759,20 @@ api.post(
     if (clash) throw new HttpError(409, 'You already have a ride within an hour of this time.', 'time')
 
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
-    // Fair fares: the trip's cost from its km and its minutes with the traffic forecast for the departure time.
-    // (A farePerSeat sent by older apps is ignored: riders pay an equal share of this cost.)
+    // The trip's cost from its km and its minutes with the traffic forecast for the departure time.
     const cost = tripCost(route)
-    const farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
+    const mode = fareMode()
+    let farePerSeat: number
+    if (mode === 'seat') {
+      // BlaBlaCar-style: the driver's price per seat, kept within the fair range (the suggestion if none is given).
+      const range = seatPrice(cost.total, p.seats)
+      farePerSeat = p.farePerSeat == null ? range.suggested : Math.min(range.max, Math.max(range.min, Math.round(p.farePerSeat)))
+    } else farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
 
     const id = newId('r')
     run(
       `INSERT INTO rides (id, driver_id, origin, destination, depart_at, seats_total, fare_per_seat, max_detour_km, preferences, vehicle_id, note, status, route, distance_km, duration_min, women_only, fare_mode, cost_total, cost_detail, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, 'share', ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       meId(req),
       JSON.stringify(p.origin),
@@ -780,6 +788,7 @@ api.post(
       Math.round(route.distanceKm * 10) / 10,
       route.durationMin,
       p.womenOnly ? 1 : 0,
+      mode === 'seat' ? 'fixed' : 'share',
       cost.total,
       JSON.stringify(cost),
       nowIso(),

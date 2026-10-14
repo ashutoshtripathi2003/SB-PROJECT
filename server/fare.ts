@@ -1,18 +1,18 @@
 import { db, one, run } from './db'
 
 /**
- * Fair fares: the cost of the trip from its distance and its time, split equally among everyone in the car.
+ * Fares, BlaBlaCar-style: a fixed price per seat that the driver chooses within fair limits.
  *
- *   trip cost  = km × ₹ per km  +  minutes × ₹ per minute
- *   each share = trip cost × (that person's km × seats) ÷ (everyone's km × seats, the driver included)
+ *   trip cost       = km × ₹ per km  +  minutes × ₹ per minute   (route with TomTom's traffic, any car)
+ *   suggested price = trip cost ÷ (seats + 1)    an equal share as if the car were full, the driver included
+ *   driver may set  = ₹30 … trip cost ÷ seats    so even a full car never pays more than the trip costs
+ *   a rider pays    = the seat price for the part of the route they ride (matching: at least 40% of it)
+ *   driver's share  = trip cost − what the riders pay
  *
- * The km and the minutes come from the route with TomTom's traffic, so a jam (more minutes) costs a little
- * more, exactly like the extra fuel it burns. Nothing depends on the car: it works for every car, and the
- * driver types nothing. The two rates are set by the admin.
+ * The price is fixed when the ride is published and never changes for anyone who books.
  *
- * A rider's price is locked when they book: their share with the traffic forecast plus a 10% cushion
- * for a worse jam on the day. It only goes down: as more riders join, and once more when the driver
- * starts the trip, if the live traffic makes the real cost lower. It never goes up.
+ * FARE_MODE=share keeps the earlier "split live" design (a rider's price locked with a 10% cushion that
+ * drops as riders join and at the start); rides already created that way keep working either way.
  */
 
 export type FareRates = { perKm: number; perMin: number }
@@ -97,6 +97,23 @@ export function splitCost(cost: number, driverKm: number, riders: Rider[]): Map<
 
 /** What each person pays when the car is full (for ride cards: "from ₹105"). */
 export const perPersonIfFull = (cost: number, seats: number) => Math.max(MIN_FARE, round5(cost / (seats + 1)))
+
+export type FareMode = 'seat' | 'share'
+/** How new rides are priced: 'seat' (BlaBlaCar-style, the default) or 'share' (the earlier live split). */
+export const fareMode = (): FareMode => (process.env.FARE_MODE === 'share' ? 'share' : 'seat')
+
+const floor5 = (n: number) => Math.floor(n / 5) * 5
+
+/**
+ * The price per seat for the whole route: the suggestion (an equal share as if every seat were taken,
+ * the driver included) and the range the driver may choose from. The top of the range is the price at
+ * which a full car exactly covers the trip cost, so the driver never makes a profit.
+ */
+export function seatPrice(cost: number, seats: number) {
+  const max = Math.max(MIN_FARE, floor5(cost / Math.max(1, seats)))
+  const suggested = Math.min(max, Math.max(MIN_FARE, round5(cost / (Math.max(1, seats) + 1))))
+  return { suggested, min: MIN_FARE, max }
+}
 
 /** The driver's own share: the trip cost minus what the riders pay (the driver pays it themselves). */
 export const driverShare = (cost: number, ridersPay: number) => Math.max(0, Math.round(cost - ridersPay))

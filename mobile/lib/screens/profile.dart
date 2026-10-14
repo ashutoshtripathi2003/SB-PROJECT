@@ -670,7 +670,7 @@ class NotificationSettingsScreen extends StatelessWidget {
 }
 
 const _faq = [
-  ('How is the fare decided?', 'Nobody sets a price. RideSync works out the trip’s cost from its distance and its time: km × ₹ per km plus minutes × ₹ per minute, with TomTom’s traffic for that time, so a jam costs a little more. It works the same for every car. The cost is split equally among everyone in the car, the driver included, by the km each person rides, plus a 10% cushion for traffic. Your price is locked when you book and never goes up: it drops if more riders join, and again when the driver starts if the live traffic is lighter.'),
+  ('How is the fare decided?', 'It works like BlaBlaCar. RideSync works out the trip’s cost from its distance and its time in traffic and suggests a price per seat: an equal share as if the car were full, the driver included. The driver can change it between ₹30 and the price at which a full car exactly covers the trip, so nobody makes a profit. You see the price before you book and it never changes. If you ride only part of the way you pay for your part, and the driver pays their own share.'),
   ('What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this match?” on any ride to see the breakdown.'),
   ('What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'),
   ('Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'),

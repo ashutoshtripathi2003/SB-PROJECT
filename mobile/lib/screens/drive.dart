@@ -45,6 +45,14 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   bool _routing = false;
   CostPreview? _cost;
   int _costSeq = 0;
+  /// BlaBlaCar-style: the driver's price per seat (null = RideSync's suggestion), kept within the fair range.
+  int? _price;
+
+  int? get _seatPrice {
+    final c = _cost;
+    if (c == null || c.mode != 'seat') return null;
+    return (_price ?? c.seatSuggested).clamp(c.seatMin, c.seatMax);
+  }
   bool _publishing = false;
   String? _error;
 
@@ -102,6 +110,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         'preferences': _prefs.toList(),
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
         if (_womenOnly && _canWomenOnly) 'womenOnly': true,
+        if (_seatPrice != null) 'farePerSeat': _seatPrice,
       });
       if (!mounted) return;
       await showMoment(context, Moment.published, 'Ride offered successfully', subtitle: 'Students going your way can see it and book now.');
@@ -175,7 +184,51 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
               ]),
             ),
             if (_routing) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
-            if (_route != null) ...[
+            if (_route != null && cost != null && cost.mode == 'seat') ...[
+              const SectionTitle('Price per seat'),
+              Panel(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    IconButton.outlined(onPressed: _seatPrice! > cost.seatMin ? () => setState(() => _price = (_seatPrice! - 5).clamp(cost.seatMin, cost.seatMax)) : null, icon: const Icon(Icons.remove)),
+                    Expanded(
+                      child: Column(children: [
+                        Text(money(_seatPrice!), style: RS.heading(28, color: RS.primary)),
+                        const Text('per seat, whole route', style: TextStyle(color: RS.ink500, fontSize: 13)),
+                      ]),
+                    ),
+                    IconButton.outlined(onPressed: _seatPrice! < cost.seatMax ? () => setState(() => _price = (_seatPrice! + 5).clamp(cost.seatMin, cost.seatMax)) : null, icon: const Icon(Icons.add)),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${_seatPrice == cost.seatSuggested ? 'Suggested price' : 'Suggested ${money(cost.seatSuggested)}'} · you can set ${money(cost.seatMin)}–${money(cost.seatMax)}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: RS.ink500, fontSize: 12.5),
+                  ),
+                  if (_seatPrice != cost.seatSuggested) Center(child: TextButton(onPressed: () => setState(() => _price = null), child: const Text('Use the suggested price'))),
+                  const SizedBox(height: 10),
+                  Row(children: [
+                    for (var n = 1; n <= _seats; n++) ...[
+                      if (n > 1) const SizedBox(width: 8),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+                          child: Column(children: [
+                            Text('$n rider${n == 1 ? '' : 's'} pay ${money(n * _seatPrice!)}', style: const TextStyle(color: RS.ink500, fontSize: 11.5), textAlign: TextAlign.center),
+                            Text('you ${money(driverShare(cost.total, n * _seatPrice!))}', style: RS.heading(15)),
+                          ]),
+                        ),
+                      ),
+                    ],
+                  ]),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Like BlaBlaCar: you choose the price within a fair limit, riders see it before booking and it never changes. Trip cost about ${money(cost.total)} (${cost.summary}). The suggestion is an equal share as if every seat were taken, you included; the most you can ask is ${money(cost.seatMax)}, so even a full car never pays more than the trip costs. Riders going part of the way pay for their part.',
+                    style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4),
+                  ),
+                ]),
+              ),
+            ] else if (_route != null) ...[
               const SectionTitle('Trip cost, shared equally'),
               Panel(
                 child: cost == null
@@ -390,14 +443,20 @@ class _DriveScreenState extends State<DriveScreen> {
           Panel(child: RouteLine(from: ride.origin, to: ride.destination, fromTime: timeOf(ride.departAt), toTime: eta == null ? timeOf(ride.departAt.add(Duration(minutes: ride.durationMin))) : '~${timeOf(eta.arrive)}')),
           const SizedBox(height: 8),
           Text('${ride.seatsBooked}/${ride.seatsTotal} seats booked · ${ride.shareFare && ride.costTotal != null ? 'trip cost ${money(ride.costTotal!)}, shared equally' : '${money(ride.farePerSeat)} per seat'}', style: const TextStyle(color: RS.ink500)),
-          if (ride.shareFare && ride.costTotal != null) ...[
+          if (ride.costTotal != null) ...[
             const SizedBox(height: 6),
             Text.rich(TextSpan(children: [
               TextSpan(text: 'Your share ${money(driverShare(ride.costTotal!, ridersPay))}', style: const TextStyle(fontWeight: FontWeight.w700, color: RS.ink900)),
               TextSpan(text: ' · Riders pay ${money(ridersPay)} · Trip cost ${money(ride.costTotal!)}', style: const TextStyle(color: RS.ink500)),
             ])),
           ],
-          if (ride.shareFare && ride.costSummary != null) Text('${ride.costSummary}. Split by the km each person rides, you included: you pay your share yourself.${ride.status == 'scheduled' ? ' Fixed with the live traffic when you start.' : ''}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+          if (ride.costSummary != null)
+            Text(
+              ride.shareFare
+                  ? '${ride.costSummary}. Split by the km each person rides, you included: you pay your share yourself.${ride.status == 'scheduled' ? ' Fixed with the live traffic when you start.' : ''}'
+                  : 'Trip cost ${ride.costSummary}. Riders pay your price of ${money(ride.farePerSeat)} a seat (less if they ride only part of the way); the rest is your own share.',
+              style: const TextStyle(color: RS.ink500, fontSize: 12.5),
+            ),
           if (ride.status == 'in_progress') ...[
             const SizedBox(height: 12),
             Notice(_gpsError ?? (_pos == null ? 'Starting GPS…' : 'Sharing your live location with riders. Keep RideSync open while driving.'), tone: _gpsError == null ? 'success' : 'warning', icon: Icons.my_location),
