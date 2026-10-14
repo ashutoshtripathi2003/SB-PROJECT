@@ -357,6 +357,12 @@ int driverShare(int cost, int ridersPay) => cost > ridersPay ? cost - ridersPay 
 class CostPreview {
   /// total = km × perKm + min × perMin.
   final int total, min, perPersonIfFull, trafficDelayMin;
+
+  /// 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split.
+  final String mode;
+
+  /// Suggested price per seat (whole route) and the range the driver may choose from.
+  final int seatSuggested, seatMin, seatMax;
   final double km, perKm, perMin;
   final String summary;
 
@@ -371,6 +377,10 @@ class CostPreview {
         summary = _s((j['cost'] as Map)['summary']),
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
+        mode = j['mode'] == 'seat' ? 'seat' : 'share',
+        seatSuggested = j['seat'] is Map ? _i((j['seat'] as Map)['suggested']) : 0,
+        seatMin = j['seat'] is Map ? _i((j['seat'] as Map)['min']) : 0,
+        seatMax = j['seat'] is Map ? _i((j['seat'] as Map)['max']) : 0,
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']), _i(s['driver']))).toList();
 }
 

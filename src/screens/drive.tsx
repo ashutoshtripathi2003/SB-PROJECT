@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, Navigation, MapPinOff, MessageCircle, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
+import { Banknote, CarFront, Check, CircleCheck, Flag, Info, KeyRound, LocateFixed, Navigation, MapPinOff, MessageCircle, Minus, Music, Phone, Play, Plus, Share2, Snowflake, Star, UserMinus, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MatchScore } from '@/components/MatchScore'
@@ -55,6 +55,8 @@ export function OfferRide() {
   const [note, setNote] = useState('')
   const [route, setRoute] = useState<RouteInfo | null>(null)
   const [cost, setCost] = useState<CostPreview | null>(null)
+  // BlaBlaCar-style: the driver's price per seat (null = RideSync's suggestion), kept within the fair range.
+  const [price, setPrice] = useState<number | null>(null)
   const [errors, setErrors] = useState<ReturnType<typeof validateTrip> & { form?: string | null }>({})
   const [publishing, setPublishing] = useState(false)
   const [vehicleOpen, setVehicleOpen] = useState(false)
@@ -86,6 +88,9 @@ export function OfferRide() {
       alive = false
     }
   }, [draft.pickup, draft.drop, draft.date, draft.time, draft.seats, vehicleKey])
+
+  const seat = cost?.mode === 'seat' ? cost.seat : null
+  const seatPrice = seat ? Math.min(seat.max, Math.max(seat.min, price ?? seat.suggested)) : null
 
   if (u.commute === 'rider' && !u.vehicle) {
     return (
@@ -121,6 +126,7 @@ export function OfferRide() {
         preferences: prefs,
         note: note.trim() || undefined,
         womenOnly: u.gender === 'female' && womenOnly,
+        ...(seatPrice != null ? { farePerSeat: seatPrice } : {}),
       })
       celebrate({ kind: 'published', title: 'Ride offered successfully', body: 'VIT students heading your way can see it and request a seat now. We’ll notify you the moment someone does.' })
       nav(`/drive/${ride.id}`, { replace: true })
@@ -170,6 +176,46 @@ export function OfferRide() {
           </p>
         )}
 
+        {seat && cost && seatPrice != null ? (
+          <section className="stack gap-3">
+            <div className="stack gap-1">
+              <h2 className="section__title" style={{ padding: 0 }}>
+                Price per seat
+              </h2>
+              <span className="t-sm t-muted">Like BlaBlaCar: you choose the price, within a fair limit. Riders see it before booking and it never changes. You pay your own share of the trip.</span>
+            </div>
+            <div className="fare-box">
+              <div className="row row--between">
+                <IconButton label="Lower price per seat" className="fare-box__btn" disabled={seatPrice <= seat.min} onClick={() => setPrice(Math.max(seat.min, seatPrice - 5))}>
+                  <Minus />
+                </IconButton>
+                <div className="stack" style={{ alignItems: 'center' }}>
+                  <span className="t-display tabular">{money(seatPrice)}</span>
+                  <span className="t-sm t-muted">per seat, whole route</span>
+                </div>
+                <IconButton label="Raise price per seat" className="fare-box__btn" disabled={seatPrice >= seat.max} onClick={() => setPrice(Math.min(seat.max, seatPrice + 5))}>
+                  <Plus />
+                </IconButton>
+              </div>
+              <p className="t-sm t-muted t-center" style={{ marginTop: 8 }}>
+                {seatPrice === seat.suggested ? 'Suggested price' : <>Suggested {money(seat.suggested)} · <button type="button" className="t-strong t-primary" onClick={() => setPrice(null)}>use it</button></>} · you can set {money(seat.min)}–{money(seat.max)}
+              </p>
+              <div className="cost-shares" aria-label="What you pay with each number of riders">
+                {Array.from({ length: draft.seats }, (_, i) => i + 1).map((n) => (
+                  <span key={n} className="cost-shares__item">
+                    <span className="t-caption t-muted">{plural(n, 'rider')}</span>
+                    <span className="t-caption t-muted">pay {money(n * seatPrice)}</span>
+                    <span className="t-body t-strong tabular">you {money(driverShare(cost.cost.total, n * seatPrice))}</span>
+                  </span>
+                ))}
+              </div>
+              <p className="cost-working">
+                Trip cost about {money(cost.cost.total)} ({cost.cost.summary}). The suggestion is an equal share as if every seat were taken, you included. The most you can ask is {money(seat.max)}, so even a full car never pays more than the trip costs. Riders going only part of the way pay for their part.
+                {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
+              </p>
+            </div>
+          </section>
+        ) : (
         <section className="stack gap-3">
           <div className="stack gap-1">
             <h2 className="section__title" style={{ padding: 0 }}>
@@ -207,6 +253,7 @@ export function OfferRide() {
             <p className="t-sm t-muted">{u.vehicle ? 'Choose your destination and time to see the trip cost.' : 'Add your car to see the trip cost.'}</p>
           )}
         </section>
+        )}
 
         <section className="stack gap-3">
           <h2 className="section__title" style={{ padding: 0 }}>
@@ -537,15 +584,16 @@ export function DriverRide() {
           </div>
         </div>
 
-        {ride.fareMode === 'share' && ride.costTotal != null && (
+        {ride.costTotal != null && (
           <div className="stack gap-1" style={{ marginTop: -8 }}>
             <p className="t-body">
               <span className="t-strong">Your share {money(driverShare(ride.costTotal, riders.reduce((s, b) => s + b.fare, 0)))}</span>
               <span className="t-muted"> · Riders pay {money(riders.reduce((s, b) => s + b.fare, 0))} · Trip cost {money(ride.costTotal)}</span>
             </p>
             <p className="t-sm t-muted">
-              {ride.costSummary}. Split equally by the km each person rides, you included: you pay your share yourself.
-              {ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}
+              {ride.fareMode === 'share'
+                ? <>{ride.costSummary}. Split equally by the km each person rides, you included: you pay your share yourself.{ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}</>
+                : <>Trip cost {ride.costSummary}. Riders pay your price of {money(ride.farePerSeat)} a seat (less if they ride only part of the way); the rest is your own share.</>}
             </p>
           </div>
         )}

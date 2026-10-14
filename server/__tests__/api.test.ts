@@ -83,12 +83,14 @@ describe('full ride between two devices', () => {
     const offer = { origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 60, maxDetourKm: 3, preferences: ['no_smoking'] }
     expect((await driver.post('/api/rides').set(H).send(offer)).status).toBe(400)
     expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Honda', model: 'City', color: 'White', plate: 'MH01AB1234', seats: 3, fuel: 'petrol' })).status).toBe(200)
-    // Fair fares: the driver doesn't set a price (an old app's farePerSeat is ignored); the trip's cost is split.
+    // BlaBlaCar-style: the driver's price per seat is kept within the fair range (a full car never pays
+    // more than the trip costs), so ₹2000 is brought down to the top of the range.
     const pub = await driver.post('/api/rides').set(H).send({ ...offer, farePerSeat: 2000 })
     expect(pub.status).toBe(200)
-    expect(pub.body).toMatchObject({ fareMode: 'share' })
+    expect(pub.body.fareMode).toBeUndefined()
     expect(pub.body.costTotal).toBeGreaterThan(0)
-    expect(pub.body.farePerSeat).toBeLessThan(2000)
+    expect(pub.body.farePerSeat).toBe(Math.max(30, Math.floor(pub.body.costTotal / 3 / 5) * 5))
+    expect(pub.body.farePerSeat * 3).toBeLessThanOrEqual(Math.max(90, pub.body.costTotal))
     const rideId = pub.body.id
 
     // Rider on another device sees it.
@@ -99,9 +101,9 @@ describe('full ride between two devices', () => {
     expect(search.body.results).toHaveLength(1)
     expect(search.body.results[0].score).toBeGreaterThan(80)
     expect(search.body.results[0].driver.gender).toBeUndefined()
-    // Alone with the driver, the rider's price is half the cost plus the 10% traffic cushion (rounded to ₹5).
-    expect(Math.abs(search.body.results[0].fare - (pub.body.costTotal * 1.1) / 2)).toBeLessThanOrEqual(5)
-    expect(search.body.results[0].fareMax).toBeGreaterThanOrEqual(search.body.results[0].fare)
+    // The whole route: the driver's fixed price per seat.
+    expect(search.body.results[0].fare).toBe(pub.body.farePerSeat)
+    expect(search.body.results[0].fareMax).toBeUndefined()
     const feed = await rider.get('/api/rides/feed')
     expect(feed.body.map((x: { ride: { id: string } }) => x.ride.id)).toContain(rideId)
     // Driver doesn't see their own ride.
@@ -149,11 +151,11 @@ describe('full ride between two devices', () => {
     expect(unreadAfter.map((n: { title: string }) => n.title)).toEqual(['Welcome to RideSync'])
     expect(msgs.body.filter((m: { system: boolean }) => !m.system).map((m: { text: string }) => m.text)).toEqual(['Hi!', 'See you at 5'])
 
-    // Live ride. Starting fixes the share (never above the maximum).
+    // Live ride. The price was fixed when booked and doesn't change at the start.
     expect((await driver.post(`/api/rides/${rideId}/start`).set(H).send({})).status).toBe(200)
     const fixed = (await rider.get(`/api/bookings/${bookingId}`)).body.booking
-    expect(fixed.fareFinal).toBe(true)
-    expect(fixed.fare).toBeLessThanOrEqual(fixed.fareMax)
+    expect(fixed.fare).toBe(pub.body.farePerSeat)
+    expect(fixed.fareMax).toBeUndefined()
     expect((await driver.post(`/api/rides/${rideId}/location`).set(H).send({ lat: 19.03, lng: 72.87, heading: 10 })).status).toBe(200)
     const live = await rider.get(`/api/bookings/${bookingId}`)
     expect(live.body.booking.status).toBe('driver_arriving')

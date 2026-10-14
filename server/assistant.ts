@@ -86,7 +86,7 @@ export async function answer(userId: string, firstName: string, text: string): P
     case 'pin':
       return r('Your 4-digit ride PIN is shown on your trip screen once the driver accepts. Tell it to the driver when you get in — it proves you’re in the right car. Never share it in chat.', [{ type: 'link', label: 'My rides', to: '/rides' }])
     case 'pricing':
-      return r('Nobody sets a price. RideSync works out the trip’s cost from its distance and its time: km × ₹ per km plus minutes × ₹ per minute, with TomTom’s traffic for that time (a jam adds minutes, so it costs a little more). The admin sets the two rates. That cost is split equally among everyone in the car, the driver included, by the km each person rides, plus a 10% traffic cushion. Your price is locked when you book and never goes up: it drops if more riders join, and again when the trip starts if the live traffic is lighter.')
+      return r('It works like BlaBlaCar. RideSync works out the trip’s cost from its distance and its time in traffic (km × ₹ per km + minutes × ₹ per minute) and suggests a price per seat: an equal share as if the car were full, the driver included. The driver can change it between ₹30 and the price at which a full car exactly covers the trip, so nobody makes a profit. You see the price before booking and it never changes; if you ride only part of the way you pay for your part, and the driver pays their own share.')
     case 'refund':
       return r('If a ride is cancelled, wallet payments return to your wallet instantly and online payments go back to your bank in 5–7 working days. UPI/cash paid to the driver is refunded by the driver directly.', [{ type: 'link', label: 'Wallet', to: '/wallet' }])
     case 'wallet':

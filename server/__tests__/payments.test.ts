@@ -56,8 +56,9 @@ async function acceptedBooking(tag: string) {
   const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
   const booking = (await rider.post('/api/bookings').set(H).send({ rideId: ride.id, query })).body
   await driver.post(`/api/bookings/${booking.id}/respond`).set(H).send({ accept: true })
-  // Fair fares: paying before the trip starts takes the guaranteed maximum share.
-  const max = (await rider.get(`/api/bookings/${booking.id}`)).body.booking.fareMax as number
+  // The fixed seat price (an older live-split ride would take its guaranteed maximum instead).
+  const b = (await rider.get(`/api/bookings/${booking.id}`)).body.booking
+  const max = (b.fareMax ?? b.fare) as number
   return { driver, rider, ride, booking, max }
 }
 
