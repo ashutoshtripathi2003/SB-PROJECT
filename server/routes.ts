@@ -50,7 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CARS, CUSHION, DEFAULT_MILEAGE, carMileage, fuelPrices, perPersonIfFull, setFuelPrices, shareTable, splitCost, tripCost, vehicleMileage, type Rider as FareRider, type TripCost } from './fare'
+import { CUSHION, RATE_LIMITS, fareRates, perPersonIfFull, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -110,7 +110,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', fuelPrices: fuelPrices(), defaultMileage: DEFAULT_MILEAGE, cushion: CUSHION } })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: 'share', rates: fareRates(), cushion: CUSHION } })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -277,20 +277,6 @@ api.patch(
   }),
 )
 
-/** Car models RideSync knows the mileage of (for the car form's suggestions). */
-api.get('/cars', (_req, res) => {
-  res.json(CARS.map((c) => ({ make: c.make, model: c.model, fuel: c.fuel, mileage: { smooth: c.m[0], city: c.m[1], traffic: c.m[2] } })))
-})
-
-/** The mileage RideSync would use for this car (by its model), shown in the car form. */
-api.get('/cars/mileage', (req, res) => {
-  const fuel = String(req.query.fuel ?? 'petrol')
-  if (!['petrol', 'diesel', 'cng', 'ev'].includes(fuel)) return res.json({ match: null })
-  const car = carMileage(String(req.query.make ?? '').slice(0, 40), String(req.query.model ?? '').slice(0, 40), fuel as 'petrol')
-  res.json(car ? { match: car.name, mileage: car.mileage } : { match: null, mileage: DEFAULT_MILEAGE[fuel as 'petrol'] })
-})
-
-const MileageZ = z.number().min(1, 'Mileage looks too low').max(60, 'Mileage looks too high').nullable()
 
 api.put(
   '/me/vehicle',
@@ -304,21 +290,16 @@ api.put(
         plate: z.string().trim().max(20),
         seats: z.number().int().min(1).max(7),
         fuel: z.enum(['petrol', 'diesel', 'cng', 'ev']),
-        // The car's own mileage (km per litre / kg / kWh) on open roads, in the city and in heavy traffic.
-        mileage: z
-          .object({ smooth: MileageZ, city: MileageZ, traffic: MileageZ })
-          .partial()
-          .optional(),
+        // Sent by older apps (fares used to depend on the car's mileage); no longer used.
+        mileage: z.unknown().optional(),
       }),
       req.body,
     )
     const err = validatePlate(v.plate)
     if (err) throw new HttpError(400, err, 'plate')
     const existing = vehicleFor(meId(req))
-    const m = v.mileage ?? {}
-    const mil = [m.smooth ?? null, m.city ?? null, m.traffic ?? null]
-    if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=?, mileage_smooth=?, mileage_city=?, mileage_traffic=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, ...mil, meId(req))
-    else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel, mileage_smooth, mileage_city, mileage_traffic) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, ...mil)
+    if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, meId(req))
+    else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel)
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),
@@ -569,8 +550,7 @@ async function liveTripCost(r: Row): Promise<TripCost | null> {
   try {
     const route = await getRoute(JSON.parse(String(r.origin)), JSON.parse(String(r.destination)), { departAt: new Date() })
     const live = route.source === 'tomtom' || route.source === 'google' || route.trafficDelayMin != null
-    const v = vehicleFor(String(r.driver_id))
-    return v && live ? tripCost(v.fuel, vehicleMileage(v).mileage, route) : null
+    return live ? tripCost(route) : null
   } catch {
     return null
   }
@@ -730,7 +710,7 @@ api.post(
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
-    const cost = tripCost(vehicle.fuel, vehicleMileage(vehicle).mileage, route)
+    const cost = tripCost(route)
     return {
       cost,
       // What each rider would book at (with the cushion); it can drop at the start.
@@ -739,8 +719,6 @@ api.post(
       distanceKm: Math.round(route.distanceKm * 10) / 10,
       durationMin: route.durationMin,
       trafficDelayMin: route.trafficDelayMin ?? 0,
-      ownMileage: !!vehicle.mileage,
-      mileage: vehicleMileage(vehicle),
     }
   }),
 )
@@ -779,9 +757,9 @@ api.post(
     if (clash) throw new HttpError(409, 'You already have a ride within an hour of this time.', 'time')
 
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
-    // Fair fares: the trip's real cost with this car and the traffic forecast for the departure time.
+    // Fair fares: the trip's cost from its km and its minutes with the traffic forecast for the departure time.
     // (A farePerSeat sent by older apps is ignored: riders pay an equal share of this cost.)
-    const cost = tripCost(vehicle.fuel, vehicleMileage(vehicle).mileage, route)
+    const cost = tripCost(route)
     const farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
 
     const id = newId('r')
@@ -2003,23 +1981,30 @@ api.get(
 )
 
 api.get(
-  '/admin/fuel-prices',
+  '/admin/fare-rates',
   requireUser,
   h((req) => {
     requireAdmin(req)
-    return { prices: fuelPrices() }
+    return { rates: fareRates(), limits: RATE_LIMITS }
   }),
 )
 
 api.put(
-  '/admin/fuel-prices',
+  '/admin/fare-rates',
   requireUser,
   h((req) => {
     requireAdmin(req)
-    const price = z.number().min(1).max(500)
-    const p = parse(z.object({ petrol: price, diesel: price, cng: price, ev: price }).partial(), req.body)
-    setFuelPrices(p)
-    return { prices: fuelPrices() }
+    const p = parse(
+      z
+        .object({
+          perKm: z.number().min(RATE_LIMITS.perKm.min).max(RATE_LIMITS.perKm.max),
+          perMin: z.number().min(RATE_LIMITS.perMin.min).max(RATE_LIMITS.perMin.max),
+        })
+        .partial(),
+      req.body,
+    )
+    setFareRates(p)
+    return { rates: fareRates(), limits: RATE_LIMITS }
   }),
 )
 

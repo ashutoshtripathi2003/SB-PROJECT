@@ -153,7 +153,8 @@ addColumn('bookings', 'off_route_alerted_at', 'TEXT')
 addColumn('bookings', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'women_only', 'INTEGER NOT NULL DEFAULT 0')
-// Fair fares (server/fare.ts): the driver's own mileage, the trip's real cost and each rider's equal share.
+// Fair fares (server/fare.ts): the trip's cost and each rider's equal share. (The mileage columns are from an
+// earlier fare design and are no longer used.)
 addColumn('vehicles', 'mileage_smooth', 'REAL')
 addColumn('vehicles', 'mileage_city', 'REAL')
 addColumn('vehicles', 'mileage_traffic', 'REAL')

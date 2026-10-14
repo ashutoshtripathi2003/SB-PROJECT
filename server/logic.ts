@@ -60,8 +60,6 @@ export function userStats(userId: string) {
 export function vehicleFor(userId: string): Vehicle | undefined {
   const v = one(`SELECT * FROM vehicles WHERE user_id = ?`, userId)
   if (!v) return undefined
-  const m = (x: unknown) => (x == null ? undefined : Number(x))
-  const mileage = { smooth: m(v.mileage_smooth), city: m(v.mileage_city), traffic: m(v.mileage_traffic) }
   return {
     id: String(v.id),
     make: String(v.make),
@@ -70,7 +68,6 @@ export function vehicleFor(userId: string): Vehicle | undefined {
     plate: String(v.plate),
     seats: Number(v.seats),
     fuel: v.fuel as Vehicle['fuel'],
-    ...(mileage.smooth || mileage.city || mileage.traffic ? { mileage } : {}),
   }
 }
 

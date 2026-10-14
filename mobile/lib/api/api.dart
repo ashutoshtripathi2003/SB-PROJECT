@@ -104,13 +104,6 @@ class Api {
 
   Future<User> me() async => User.fromJson(_map(await get('/me')));
   Future<User> updateMe(Map<String, dynamic> patch) async => User.fromJson(_map(await this.patch('/me', patch)));
-  /// The mileage RideSync would use for this car, by its model: (model name or null, [open, city, traffic]).
-  Future<(String?, List<num>)> carMileage(String make, String model, String fuel) async {
-    final j = _map(await get('/cars/mileage', {'make': make, 'model': model, 'fuel': fuel}));
-    final m = (j['mileage'] as Map?) ?? const {};
-    return (j['match'] as String?, [m['smooth'] as num? ?? 0, m['city'] as num? ?? 0, m['traffic'] as num? ?? 0]);
-  }
-
   Future<User> saveVehicle(Map<String, dynamic> v) async => User.fromJson(_map(await put('/me/vehicle', v)));
   Future<void> deleteAccount() => delete('/me');
 
@@ -225,8 +218,9 @@ class Api {
   /* ---- Admin dashboard (admins only) ---- */
 
   Future<AdminStats> adminStats() async => AdminStats.fromJson(_map(await get('/admin/stats')));
-  Future<Map<String, num>> adminFuelPrices() async => (_map(await get('/admin/fuel-prices'))['prices'] as Map).cast<String, num>();
-  Future<Map<String, num>> setFuelPrices(Map<String, num> p) async => (_map(await put('/admin/fuel-prices', p))['prices'] as Map).cast<String, num>();
+  /// Fare rates: {'perKm': ₹ per km, 'perMin': ₹ per minute}.
+  Future<Map<String, num>> adminFareRates() async => (_map(await get('/admin/fare-rates'))['rates'] as Map).cast<String, num>();
+  Future<Map<String, num>> setFareRates(Map<String, num> p) async => (_map(await put('/admin/fare-rates', p))['rates'] as Map).cast<String, num>();
 
   /// [status]: scheduled | in_progress | completed | cancelled, or null for all.
   Future<List<AdminRide>> adminRides([String? status]) async =>

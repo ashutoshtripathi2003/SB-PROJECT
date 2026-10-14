@@ -56,13 +56,8 @@ class Vehicle {
   final String plate;
   final int seats;
   final String fuel;
-
-  /// The car's own mileage (km per litre / kg / kWh) on open roads, in the city and in heavy traffic; null = typical.
-  final double? mileageSmooth, mileageCity, mileageTraffic;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileageSmooth, this.mileageCity, this.mileageTraffic});
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel});
   factory Vehicle.fromJson(Map<String, dynamic> j) {
-    final m = j['mileage'] is Map ? (j['mileage'] as Map).cast<String, dynamic>() : const <String, dynamic>{};
-    double? n(Object? v) => v is num && v > 0 ? v.toDouble() : null;
     return Vehicle(
         id: _s(j['id']),
         make: _s(j['make']),
@@ -70,12 +65,8 @@ class Vehicle {
         color: _s(j['color']),
         plate: _s(j['plate']),
         seats: _i(j['seats']),
-        fuel: _s(j['fuel']),
-        mileageSmooth: n(m['smooth']),
-        mileageCity: n(m['city']),
-        mileageTraffic: n(m['traffic']));
+        fuel: _s(j['fuel']));
   }
-  bool get hasMileage => mileageSmooth != null || mileageCity != null || mileageTraffic != null;
   String get title => '$color $make $model';
 }
 
@@ -223,7 +214,7 @@ class Ride {
   /// Only female students can see and book it.
   final bool womenOnly;
 
-  /// Fair fares: the trip's real cost (fuel + wear) split equally among everyone in the car.
+  /// Fair fares: the trip's cost (km × ₹ per km + minutes × ₹ per minute) split equally among everyone in the car.
   final bool shareFare;
   final int? costTotal;
   final String? costSummary;
@@ -361,30 +352,22 @@ class MatchResult {
 
 /// Driver's preview of a trip's cost (fair fares).
 class CostPreview {
-  final int total, fuelCost, wear, fuelPrice, perPersonIfFull, trafficDelayMin;
-  final double fuelUsed;
-  final String unit, summary;
-  final bool ownMileage;
-
-  /// Which mileage was used: 'own', 'model' (the car model's typical figures) or 'typical' (for the fuel).
-  final String mileageSource;
-  final String? carName;
+  /// total = km × perKm + min × perMin.
+  final int total, min, perPersonIfFull, trafficDelayMin;
+  final double km, perKm, perMin;
+  final String summary;
 
   /// What each rider pays with 1, 2, … riders going the whole way.
   final List<(int riders, int each)> shares;
   CostPreview.fromJson(Map<String, dynamic> j)
       : total = _i((j['cost'] as Map)['total']),
-        fuelCost = _i((j['cost'] as Map)['fuelCost']),
-        wear = _i((j['cost'] as Map)['wear']),
-        fuelPrice = _i((j['cost'] as Map)['fuelPrice']),
-        fuelUsed = _d((j['cost'] as Map)['fuelUsed']),
-        unit = _s((j['cost'] as Map)['unit']),
+        min = _i((j['cost'] as Map)['min']),
+        km = _d((j['cost'] as Map)['km']),
+        perKm = _d((j['cost'] as Map)['perKm']),
+        perMin = _d((j['cost'] as Map)['perMin']),
         summary = _s((j['cost'] as Map)['summary']),
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
-        ownMileage = j['ownMileage'] == true,
-        mileageSource = j['mileage'] is Map ? _s((j['mileage'] as Map)['source']) : 'typical',
-        carName = j['mileage'] is Map ? _ns((j['mileage'] as Map)['name']) : null,
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']))).toList();
 }
 

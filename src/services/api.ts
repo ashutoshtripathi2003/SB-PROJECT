@@ -371,8 +371,8 @@ export const admin = {
   train: () => mutate(post('/admin/ml/train')),
   addDemo: () => mutate(post<{ added: DemoCount; demo: DemoCount }>('/admin/demo')),
   removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
-  fuelPrices: () => request<{ prices: FuelPrices }>('GET', '/admin/fuel-prices'),
-  setFuelPrices: (p: Partial<FuelPrices>) => request<{ prices: FuelPrices }>('PUT', '/admin/fuel-prices', p),
+  fareRates: () => request<{ rates: FareRates; limits: Record<keyof FareRates, { min: number; max: number }> }>('GET', '/admin/fare-rates'),
+  setFareRates: (p: Partial<FareRates>) => request<{ rates: FareRates }>('PUT', '/admin/fare-rates', p),
 }
 
 export type AssistantAction =
@@ -493,17 +493,18 @@ export type OfferInput = {
   womenOnly?: boolean
 }
 
-export type FuelPrices = Record<Vehicle['fuel'], number>
+/** ₹ per km and ₹ per minute, set by the admin. */
+export type FareRates = { perKm: number; perMin: number }
+/** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
   total: number
-  fuel: Vehicle['fuel']
-  unit: string
-  km: { smooth: number; city: number; traffic: number }
-  mileage: { smooth: number; city: number; traffic: number }
-  fuelUsed: number
-  fuelPrice: number
-  fuelCost: number
-  wear: number
+  km: number
+  min: number
+  trafficMin: number
+  perKm: number
+  perMin: number
+  distanceCost: number
+  timeCost: number
   summary: string
 }
 export type CostPreview = {
@@ -513,18 +514,8 @@ export type CostPreview = {
   distanceKm: number
   durationMin: number
   trafficDelayMin: number
-  ownMileage: boolean
-  /** Which mileage was used: the driver's own, the car model's typical figures, or typical for the fuel. */
-  mileage: { mileage: { smooth: number; city: number; traffic: number }; source: 'own' | 'model' | 'typical'; name?: string }
 }
-/** The trip's cost with the driver's car and the traffic forecast for that time, and what each person pays. */
-export type CarInfo = { make: string; model: string; fuel: Vehicle['fuel']; mileage: { smooth: number; city: number; traffic: number } }
-/** Car models RideSync knows the mileage of, and the figures it would use for a given car. */
-export const cars = {
-  list: () => get<CarInfo[]>('/cars'),
-  mileage: (make: string, model: string, fuel: Vehicle['fuel']) =>
-    get<{ match: string | null; mileage: { smooth: number; city: number; traffic: number } }>(`/cars/mileage?${new URLSearchParams({ make, model, fuel })}`),
-}
+/** The trip's cost with the traffic forecast for that time, and what each person pays. */
 export const costPreview = (o: { origin: Place; destination: Place; departAt: string; seats: number }) => post<CostPreview>('/rides/cost-preview', o)
 
 async function mutate<T>(p: Promise<T>) {

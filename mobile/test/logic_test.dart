@@ -22,11 +22,15 @@ void main() {
     expect(b({'fareMax': 155, 'fareFinal': true, 'paidAmount': 130, 'settleDue': -45}).settleDue, -45);
   });
 
-  test('car mileage is read from the server', () {
-    final v = Vehicle.fromJson({'id': 'v', 'make': 'Hyundai', 'model': 'Venue', 'color': 'Grey', 'plate': 'MH 01 AB 4321', 'seats': 3, 'fuel': 'diesel', 'mileage': {'smooth': 6.5, 'city': 11.5, 'traffic': 3.5}});
-    expect(v.hasMileage, isTrue);
-    expect(v.mileageTraffic, 3.5);
-    expect(Vehicle.fromJson({'fuel': 'petrol'}).hasMileage, isFalse);
+  test('the driver’s cost preview is read from the server', () {
+    final c = CostPreview.fromJson({
+      'cost': {'total': 181, 'km': 18, 'min': 55, 'perKm': 7, 'perMin': 1, 'summary': '18 km × ₹7 + 55 min × ₹1 = ₹181'},
+      'shares': [{'riders': 1, 'each': 100}, {'riders': 2, 'each': 65}],
+      'perPersonIfFull': 65,
+      'trafficDelayMin': 20,
+    });
+    expect((c.total, c.km, c.min, c.perKm, c.perMin), (181, 18.0, 55, 7.0, 1.0));
+    expect(c.shares.first, (1, 100));
   });
 
   test('server links are cleaned up', () {
