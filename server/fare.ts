@@ -1,26 +1,24 @@
 import { db, one, run } from './db'
 
 /**
- * Fares, BlaBlaCar-style: a fixed price per seat that the driver chooses within fair limits.
+ * Fares, exactly the BlaBlaCar way: a fixed price per seat that the driver sets.
  *
- *   trip cost       = km × ₹ per km  +  minutes × ₹ per minute   (route with TomTom's traffic, any car)
- *   suggested price = trip cost ÷ (seats + 1)    an equal share as if the car were full, the driver included
- *   driver may set  = ₹30 … trip cost ÷ seats    so even a full car never pays more than the trip costs
+ *   suggested price = route km × ₹ per km per seat (₹2 by default, set by the admin)
+ *   driver may set  = half to one and a half times the suggestion, never below ₹30
  *   a rider pays    = the seat price for the part of the route they ride (matching: at least 40% of it)
- *   driver's share  = trip cost − what the riders pay
  *
- * The price is fixed when the ride is published and never changes for anyone who books.
+ * The price is fixed when the ride is published and never changes for anyone who books. No platform fee.
  *
- * FARE_MODE=share keeps the earlier "split live" design (a rider's price locked with a 10% cushion that
- * drops as riders join and at the start); rides already created that way keep working either way.
+ * FARE_MODE=share keeps an earlier design (the trip's cost from km and minutes, split live among everyone
+ * with a 10% cushion that drops as riders join and at the start); rides created that way keep working.
  */
 
-export type FareRates = { perKm: number; perMin: number }
+/** perSeatKm: ₹ per km per seat (the BlaBlaCar-style suggestion). perKm / perMin: the earlier trip-cost design. */
+export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
 
-/** ₹ per km (fuel, tyres and servicing) and ₹ per minute (extra fuel while crawling in traffic). */
-export const DEFAULT_RATES: FareRates = { perKm: 7, perMin: 1 }
+export const DEFAULT_RATES: FareRates = { perSeatKm: 2, perKm: 7, perMin: 1 }
 /** What the admin may set them to. */
-export const RATE_LIMITS = { perKm: { min: 1, max: 50 }, perMin: { min: 0, max: 10 } }
+export const RATE_LIMITS = { perSeatKm: { min: 0.5, max: 10 }, perKm: { min: 1, max: 50 }, perMin: { min: 0, max: 10 } }
 
 /** Cushion in the booked price, so a worse jam on the day than forecast doesn't cost the driver. */
 export const CUSHION = 1.1
@@ -59,7 +57,7 @@ export type TripCost = {
 
 const r1 = (n: number) => Math.round(n * 10) / 10
 
-export function tripCost(route: RouteLike, rates = fareRates()): TripCost {
+export function tripCost(route: RouteLike, rates: Pick<FareRates, 'perKm' | 'perMin'> = fareRates()): TripCost {
   const km = r1(Math.max(0, route.distanceKm))
   const min = Math.max(0, Math.round(route.durationMin))
   const distanceCost = km * rates.perKm
@@ -105,14 +103,14 @@ export const fareMode = (): FareMode => (process.env.FARE_MODE === 'share' ? 'sh
 const floor5 = (n: number) => Math.floor(n / 5) * 5
 
 /**
- * The price per seat for the whole route: the suggestion (an equal share as if every seat were taken,
- * the driver included) and the range the driver may choose from. The top of the range is the price at
- * which a full car exactly covers the trip cost, so the driver never makes a profit.
+ * The price per seat for the whole route, as BlaBlaCar does it: a suggestion from the distance, and the
+ * range the driver may choose from (half to one and a half times the suggestion, never below ₹30).
  */
-export function seatPrice(cost: number, seats: number) {
-  const max = Math.max(MIN_FARE, floor5(cost / Math.max(1, seats)))
-  const suggested = Math.min(max, Math.max(MIN_FARE, round5(cost / (Math.max(1, seats) + 1))))
-  return { suggested, min: MIN_FARE, max }
+export function seatPrice(km: number, perSeatKm = fareRates().perSeatKm) {
+  const suggested = Math.max(MIN_FARE, round5(Math.max(0, km) * perSeatKm))
+  const min = Math.max(MIN_FARE, floor5(suggested * 0.5))
+  const max = Math.max(suggested, round5(suggested * 1.5))
+  return { suggested, min, max, perSeatKm }
 }
 
 /** The driver's own share: the trip cost minus what the riders pay (the driver pays it themselves). */

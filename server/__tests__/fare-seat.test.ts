@@ -17,18 +17,14 @@ beforeAll(async () => {
 })
 
 describe('seat price (BlaBlaCar-style)', () => {
-  it('suggests an equal share as if the car were full, and caps it so a full car never pays more than the trip', () => {
+  it('suggests distance × ₹2 a seat, and lets the driver choose half to one and a half times it', () => {
     expect(fare.fareMode()).toBe('seat')
-    // ₹181 trip, 3 seats: suggested 181 ÷ 4 ≈ ₹45; at most 181 ÷ 3 ≈ ₹60.
-    expect(fare.seatPrice(181, 3)).toEqual({ suggested: 45, min: 30, max: 60 })
-    expect(fare.seatPrice(181, 1)).toEqual({ suggested: 90, min: 30, max: 180 })
+    expect(fare.seatPrice(25)).toEqual({ suggested: 50, min: 30, max: 75, perSeatKm: 2 })
+    expect(fare.seatPrice(100)).toEqual({ suggested: 200, min: 100, max: 300, perSeatKm: 2 })
     // Short trips never go below ₹30 a seat.
-    expect(fare.seatPrice(60, 4)).toEqual({ suggested: 30, min: 30, max: 30 })
-    for (const seats of [1, 2, 3, 4, 6]) {
-      const r = fare.seatPrice(500, seats)
-      expect(r.max * seats).toBeLessThanOrEqual(500)
-      expect(r.suggested).toBeLessThanOrEqual(r.max)
-    }
+    expect(fare.seatPrice(4)).toEqual({ suggested: 30, min: 30, max: 45, perSeatKm: 2 })
+    // The admin's rate is used.
+    expect(fare.seatPrice(25, 3).suggested).toBe(75)
   })
 })
 
@@ -51,16 +47,16 @@ describe('offering and booking at a fixed seat price', () => {
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
     expect(preview.mode).toBe('seat')
-    expect(preview.seat).toEqual(fare.seatPrice(preview.cost.total, 3))
+    expect(preview.seat).toEqual(fare.seatPrice(preview.distanceKm))
 
-    // Below ₹30 is brought up to ₹30; a price inside the range is kept as chosen.
+    // Below the range is brought up to its lowest price; a price inside the range is kept as chosen.
     const low = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 5, maxDetourKm: 3, preferences: [] })).body
-    expect(low.farePerSeat).toBe(30)
+    expect(low.farePerSeat).toBe(preview.seat.min)
     const later = new Date(Date.now() + 6 * 3600_000).toISOString()
     const chosen = Math.min(preview.seat.max, preview.seat.suggested + 5)
     const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt: later, seats: 3, farePerSeat: chosen, maxDetourKm: 3, preferences: [] })).body
     expect(ride.farePerSeat).toBe(chosen)
-    expect(ride.costTotal).toBeGreaterThan(0)
+    expect(ride.costTotal).toBeUndefined() // no trip-cost formula: the driver's price is the price
 
     // A rider for the whole route pays the seat price; it doesn't change when others join or at the start.
     const a = await student('seat.a@vit.edu.in')
@@ -79,7 +75,5 @@ describe('offering and booking at a fixed seat price', () => {
 
     expect((await driver.post(`/api/rides/${ride.id}/start`).set(H).send({})).status).toBe(200)
     expect((await a.get(`/api/bookings/${ba.id}`)).body.booking.fare).toBe(chosen)
-    // The driver's own share is the rest of the trip cost.
-    expect(fare.driverShare(ride.costTotal, chosen)).toBe(Math.max(0, ride.costTotal - chosen))
   })
 })

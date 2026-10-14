@@ -206,24 +206,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                   ),
                   if (_seatPrice != cost.seatSuggested) Center(child: TextButton(onPressed: () => setState(() => _price = null), child: const Text('Use the suggested price'))),
                   const SizedBox(height: 10),
-                  Row(children: [
-                    for (var n = 1; n <= _seats; n++) ...[
-                      if (n > 1) const SizedBox(width: 8),
-                      Expanded(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                          child: Column(children: [
-                            Text('$n rider${n == 1 ? '' : 's'} pay ${money(n * _seatPrice!)}', style: const TextStyle(color: RS.ink500, fontSize: 11.5), textAlign: TextAlign.center),
-                            Text('you ${money(driverShare(cost.total, n * _seatPrice!))}', style: RS.heading(15)),
-                          ]),
-                        ),
-                      ),
-                    ],
-                  ]),
-                  const SizedBox(height: 10),
                   Text(
-                    'Like BlaBlaCar: you choose the price within a fair limit, riders see it before booking and it never changes. Trip cost about ${money(cost.total)} (${cost.summary}). The suggestion is an equal share as if every seat were taken, you included; the most you can ask is ${money(cost.seatMax)}, so even a full car never pays more than the trip costs. Riders going part of the way pay for their part.',
+                    'Like BlaBlaCar: suggested ${km(_route!.distanceKm)} × ${money(cost.seatPerKm)} a seat = ${money(cost.seatSuggested)}; you can change it. Riders see the price before booking and it never changes. Riders going only part of the way pay for their part (at least ₹30). With every seat taken you receive ${money(_seats * _seatPrice!)}.',
                     style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4),
                   ),
                 ]),

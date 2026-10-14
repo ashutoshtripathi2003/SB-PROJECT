@@ -150,7 +150,10 @@ describe('fair fares end to end', () => {
     expect((await other.get('/api/admin/fare-rates')).status).toBe(403)
     expect((await admin.get('/api/admin/fare-rates')).body.rates).toEqual(fare.DEFAULT_RATES)
     const put = await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 8 })
-    expect(put.body.rates).toEqual({ perKm: 8, perMin: fare.DEFAULT_RATES.perMin })
+    expect(put.body.rates).toEqual({ ...fare.DEFAULT_RATES, perKm: 8 })
+    // The BlaBlaCar-style rate per km per seat is set the same way.
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perSeatKm: 2.5 })).body.rates.perSeatKm).toBe(2.5)
+    expect(fare.seatPrice(20).suggested).toBe(50)
     expect((await request(app).get('/api/config')).body.fare.rates.perKm).toBe(8)
     expect(fare.tripCost({ distanceKm: 10, durationMin: 20 }).total).toBe(10 * 8 + 20 * fare.DEFAULT_RATES.perMin)
     expect((await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 0 })).status).toBe(400)

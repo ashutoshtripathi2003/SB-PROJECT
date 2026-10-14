@@ -291,7 +291,7 @@ class _FareRates extends StatefulWidget {
 }
 
 class _FareRatesState extends State<_FareRates> {
-  static const _fields = [('perKm', 'Per km', '₹/km', 1, 50), ('perMin', 'Per minute', '₹/min', 0, 10)];
+  static const _fields = [('perSeatKm', 'Price per km per seat', '₹/km', 0.5, 10)];
   final Map<String, TextEditingController> _c = {for (final f in _fields) f.$1: TextEditingController()};
   bool _loaded = false, _saving = false;
   String? _msg;
@@ -342,7 +342,7 @@ class _FareRatesState extends State<_FareRates> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Fare rates', style: RS.heading(16)),
             const SizedBox(height: 4),
-            const Text('Every trip costs km × ₹ per km + minutes × ₹ per minute (minutes include the traffic), split equally among everyone in the car.', style: TextStyle(color: RS.ink500, fontSize: 13)),
+            const Text('Like BlaBlaCar: each ride’s suggested price per seat is its distance × this rate, and the driver can set half to one and a half times it (never below ₹30).', style: TextStyle(color: RS.ink500, fontSize: 13)),
             if (_loaded) ...[
               for (final f in _fields)
                 Padding(

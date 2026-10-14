@@ -86,7 +86,7 @@ export async function answer(userId: string, firstName: string, text: string): P
     case 'pin':
       return r('Your 4-digit ride PIN is shown on your trip screen once the driver accepts. Tell it to the driver when you get in — it proves you’re in the right car. Never share it in chat.', [{ type: 'link', label: 'My rides', to: '/rides' }])
     case 'pricing':
-      return r('It works like BlaBlaCar. RideSync works out the trip’s cost from its distance and its time in traffic (km × ₹ per km + minutes × ₹ per minute) and suggests a price per seat: an equal share as if the car were full, the driver included. The driver can change it between ₹30 and the price at which a full car exactly covers the trip, so nobody makes a profit. You see the price before booking and it never changes; if you ride only part of the way you pay for your part, and the driver pays their own share.')
+      return r('It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (₹2 per km by default), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before booking and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.')
     case 'refund':
       return r('If a ride is cancelled, wallet payments return to your wallet instantly and online payments go back to your bank in 5–7 working days. UPI/cash paid to the driver is refunded by the driver directly.', [{ type: 'link', label: 'Wallet', to: '/wallet' }])
     case 'wallet':

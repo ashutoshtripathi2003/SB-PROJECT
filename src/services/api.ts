@@ -494,7 +494,7 @@ export type OfferInput = {
 }
 
 /** ₹ per km and ₹ per minute, set by the admin. */
-export type FareRates = { perKm: number; perMin: number }
+export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
 /** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
   total: number
@@ -511,8 +511,8 @@ export type CostPreview = {
   cost: TripCost
   /** 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split. */
   mode: 'seat' | 'share'
-  /** The suggested price per seat (whole route) and the range the driver may choose from. */
-  seat: { suggested: number; min: number; max: number }
+  /** The suggested price per seat (route km × ₹ per km per seat) and the range the driver may choose from. */
+  seat: { suggested: number; min: number; max: number; perSeatKm: number }
   /** Each rider's price with 1, 2, … riders, and the driver's own share then. */
   shares: { riders: number; each: number; driver: number }[]
   perPersonIfFull: number
