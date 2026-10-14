@@ -84,3 +84,6 @@ export function formatPlate(raw: string) {
   const m = p.match(/^([A-Z]{2})(\d{1,2})([A-Z]{0,3})(\d{1,4})$/)
   return m ? [m[1], m[2], m[3], m[4]].filter(Boolean).join(' ') : raw.toUpperCase()
 }
+
+/** Most rider seats a car can offer or a rider can book: a 7-seater (Innova, Ertiga) is the driver + 6. */
+export const MAX_SEATS = 6

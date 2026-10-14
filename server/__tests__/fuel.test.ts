@@ -1,0 +1,71 @@
+import request from 'supertest'
+import { beforeAll, describe, expect, it } from 'vitest'
+
+process.env.DATABASE_PATH = ':memory:'
+process.env.DEV_LOGIN = 'true'
+process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
+process.env.ADMIN_EMAILS = 'fuel.admin@vit.edu.in'
+process.env.FUEL_PRICE_URLS = 'https://down.example/petrol, https://fuel.example/mumbai'
+
+type Fuel = typeof import('../fuel')
+type Fare = typeof import('../fare')
+let fuel: Fuel
+let fare: Fare
+let app: Parameters<typeof request>[0]
+const H = { 'x-ridesync': '1' }
+
+beforeAll(async () => {
+  fuel = await import('../fuel')
+  fare = await import('../fare')
+  app = (await import('../app')).createApp()
+})
+
+/** A fuel-price page as these sites print it: diesel and a day's change next to petrol. */
+const page = (petrol: string) => `<html><head><script>var p = "₹ 999.99"</script></head><body>
+  <h1>Petrol Price in Mumbai Today</h1><p>Change: <span>&#8377; 0.12</span></p>
+  <table><tr><td>Petrol</td><td>&#8377;&nbsp;${petrol}/L</td></tr><tr><td>Diesel</td><td>Rs. 97.83</td></tr></table></body></html>`
+
+const fakeFetch = (petrol: string): typeof fetch =>
+  (async (url: string | URL | Request) =>
+    String(url).includes('down.example') ? new Response('busy', { status: 503 }) : new Response(page(petrol))) as typeof fetch
+
+describe('real petrol price', () => {
+  it('reads the petrol price from a fuel-price page', () => {
+    expect(fuel.parsePetrolPrice(page('111.21'))).toBe(111.21)
+    expect(fuel.parsePetrolPrice('Petrol in Mumbai: Rs 104.21 per litre')).toBe(104.21)
+    expect(fuel.parsePetrolPrice('<p>Diesel ₹ 97.83</p>')).toBeNull() // no petrol price on the page
+    expect(fuel.parsePetrolPrice('Petrol ₹ 1,050')).toBeNull() // not a believable price
+  })
+
+  it('turns it into ₹ per km per seat: petrol ÷ 15 km/L ÷ 4 people', () => {
+    expect(fuel.perSeatKmFromPetrol(111.21)).toBe(1.85)
+    expect(fuel.perSeatKmFromPetrol(96)).toBe(1.6)
+    expect(fuel.perSeatKmFromPetrol(130)).toBe(2.15)
+  })
+
+  it('follows the real price automatically; the admin can set their own and switch back', async () => {
+    // Before any reading: the built-in Mumbai price.
+    expect(fare.fareRates().perSeatKm).toBe(1.85)
+    // The first page is down, the second answers: the price is saved and new rides follow it.
+    const r = await fuel.refreshFuelPrice(fakeFetch('120.00'))
+    expect(r).toMatchObject({ ok: true, price: { petrol: 120, source: 'fuel.example' } })
+    expect(r.tried).toHaveLength(2)
+    expect(fare.fareRates().perSeatKm).toBe(2)
+    expect(fare.seatPrice(25).suggested).toBe(50)
+    // Nothing answers: the last reading stays.
+    const failing = (async () => new Response('', { status: 500 })) as typeof fetch
+    expect(await fuel.refreshFuelPrice(failing)).toMatchObject({ ok: false, price: { petrol: 120 } })
+
+    const admin = request.agent(app)
+    await admin.post('/api/auth/dev').set(H).send({ email: 'fuel.admin@vit.edu.in' })
+    const report = (await admin.get('/api/admin/fare-rates')).body
+    expect(report).toMatchObject({ auto: true, rates: { perSeatKm: 2 }, fuel: { petrol: 120, kmPerLitre: 15, people: 4, perSeatKm: 2 } })
+
+    // The admin's own rate wins, even when petrol changes...
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perSeatKm: 2.5 })).body).toMatchObject({ auto: false, rates: { perSeatKm: 2.5 } })
+    await fuel.refreshFuelPrice(fakeFetch('96.00'))
+    expect(fare.fareRates().perSeatKm).toBe(2.5)
+    // ...until they switch back to automatic.
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ auto: true })).body).toMatchObject({ auto: true, rates: { perSeatKm: 1.6 } })
+  })
+})

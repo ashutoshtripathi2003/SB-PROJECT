@@ -351,6 +351,9 @@ class MatchResult {
 }
 
 /// The driver's own share: the trip cost minus what the riders pay (same as the server's driverShare).
+/// Most rider seats a car can offer or a rider can book: a 7-seater (Innova, Ertiga) is the driver + 6.
+const maxSeats = 6;
+
 int driverShare(int cost, int ridersPay) => cost > ridersPay ? cost - ridersPay : 0;
 
 /// Driver's preview of a trip's cost (fair fares).

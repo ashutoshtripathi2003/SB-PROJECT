@@ -174,6 +174,8 @@ addColumn('users', 'id_note', 'TEXT')
 addColumn('users', 'id_submitted_at', 'TEXT')
 addColumn('users', 'id_ocr', 'TEXT')
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS bookings_share ON bookings(share_token)')
+// At most 6 rider seats per car (a 7-seater is the driver + 6); older apps allowed 7.
+db.exec('UPDATE vehicles SET seats = 6 WHERE seats > 6')
 
 // RideSync Wallet: every credit/debit is a row; the balance is their sum (in rupees).
 db.exec(`

@@ -5,7 +5,7 @@ import { Logo } from '@/components/Logo'
 import { NetworkError, StateView } from '@/components/States'
 import { Badge, Button, Chip, RideCardSkeleton, cx } from '@/components/ui'
 import { dayTime, money, relative } from '@/lib/format'
-import { Q, admin, auth, useMe, useQuery, type IdCardReview } from '@/services/api'
+import { Q, admin, auth, useMe, useQuery, type FareRatesReport, type IdCardReview } from '@/services/api'
 import { AiTab } from './adminAi'
 import { Review } from './adminVerify'
 
@@ -207,65 +207,90 @@ function Overview({ q }: { q: ReturnType<typeof useQuery<Stats>> }) {
   )
 }
 
-const RATE_FIELDS: { key: 'perSeatKm'; label: string; unit: string; hint: string }[] = [
-  { key: 'perSeatKm', label: 'Price per km per seat', unit: '₹ / km', hint: 'The suggested price for a seat is the route km × this' },
-]
+const RATE_LIMIT_KEY = 'perSeatKm'
+const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
 
-/** The two fare rates: every trip costs km × ₹ per km + minutes × ₹ per minute (fair fares). */
+/**
+ * Fare rate: ₹ per km per seat (suggested price = route km × it). Automatic by default: it follows
+ * today's petrol price (÷ 15 km/L ÷ 4 people); the admin can type their own instead, and switch back.
+ */
 function FareRates() {
-  const [rates, setRates] = useState<Record<string, string> | null>(null)
-  const [limits, setLimits] = useState<Record<string, { min: number; max: number }> | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [report, setReport] = useState<FareRatesReport | null>(null)
+  const [own, setOwn] = useState('')
+  const [busy, setBusy] = useState<'save' | 'auto' | 'refresh' | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const show = (r: FareRatesReport) => {
+    setReport(r)
+    setOwn(String(r.rates.perSeatKm))
+  }
   useEffect(() => {
     admin
       .fareRates()
-      .then((r) => {
-        setRates(Object.fromEntries(Object.entries(r.rates).map(([k, v]) => [k, String(v)])))
-        setLimits(r.limits)
-      })
-      .catch(() => setMsg('Couldn’t load the fare rates.'))
+      .then(show)
+      .catch(() => setMsg('Couldn’t load the fare rate.'))
   }, [])
-  async function save() {
-    if (!rates || !limits) return
-    const body = { perSeatKm: Number(rates.perSeatKm) }
-    for (const f of RATE_FIELDS) {
-      const l = limits[f.key]
-      if (!(body[f.key] >= l.min && body[f.key] <= l.max)) return setMsg(`${f.label} must be between ₹${l.min} and ₹${l.max}.`)
-    }
-    setSaving(true)
+  async function act(kind: 'save' | 'auto' | 'refresh') {
+    if (!report) return
+    const l = report.limits[RATE_LIMIT_KEY]
+    const value = Number(own)
+    if (kind === 'save' && !(value >= l.min && value <= l.max)) return setMsg(`The rate must be between ₹${l.min} and ₹${l.max}.`)
+    setBusy(kind)
     setMsg(null)
     try {
-      await admin.setFareRates(body)
-      setMsg('Saved. New trips use these rates.')
+      if (kind === 'refresh') {
+        const r = await admin.refreshFuelPrice()
+        show(r)
+        setMsg(r.refreshed ? `Read today’s petrol price: ₹${r.fuel.petrol} a litre.` : 'Couldn’t reach the fuel-price websites; still using the last price.')
+      } else {
+        show(await admin.setFareRates(kind === 'save' ? { perSeatKm: value } : { auto: true }))
+        setMsg(kind === 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow the petrol price.')
+      }
     } catch {
       setMsg('Couldn’t save. Try again.')
     } finally {
-      setSaving(false)
+      setBusy(null)
     }
   }
-  const example = rates ? Math.max(30, Math.round((25 * Number(rates.perSeatKm || 0)) / 5) * 5) : 0
+  const rate = report?.rates.perSeatKm ?? 0
+  const example = Math.max(30, Math.round((25 * rate) / 5) * 5)
+  const f = report?.fuel
   return (
     <section className="admin-group">
-      <h2 className="t-h3">Fare rates</h2>
-      <p className="t-sm t-muted">Like BlaBlaCar: RideSync suggests each ride's price per seat from its distance, and the driver can set half to one and a half times it (never below ₹30).</p>
-      {rates ? (
+      <h2 className="t-h3">Fare rate</h2>
+      <p className="t-sm t-muted">Like BlaBlaCar: each ride’s suggested price per seat is its distance × this rate, and the driver can set half to one and a half times it (never below ₹30).</p>
+      {report && f ? (
         <div className="stack gap-2" style={{ marginTop: 8 }}>
-          {RATE_FIELDS.map((f) => (
-            <label key={f.key} className="row row--between gap-2">
-              <span className="stack">
-                <span className="t-sm">
-                  {f.label} <span className="t-muted">{f.unit}</span>
-                </span>
-                <span className="t-caption t-muted">{f.hint}</span>
-              </span>
-              <input className="input" style={{ width: 96, textAlign: 'right' }} inputMode="decimal" value={rates[f.key]} onChange={(e) => setRates({ ...rates, [f.key]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 5) })} aria-label={`${f.label} rate`} />
-            </label>
-          ))}
+          <div className="row row--between gap-2">
+            <span className="t-sm">Price per km per seat</span>
+            <span className="row gap-2">
+              <Badge>{report.auto ? 'Automatic' : 'Set by admin'}</Badge>
+              <span className="t-strong tabular">₹{rate}</span>
+            </span>
+          </div>
+          <p className="t-caption t-muted">
+            Petrol today: <b>₹{f.petrol}</b> a litre ({f.source}{f.at ? `, ${when(f.at)}` : ''}). ₹{f.petrol} ÷ {f.kmPerLitre} km/L ÷ {f.people} people = <b>₹{f.perSeatKm}</b> per km per seat. The server reads it every 6 hours.
+          </p>
           <p className="t-caption t-muted">Example: a 25 km ride is suggested at ₹{example} a seat.</p>
-          <Button size="sm" loading={saving} onClick={save}>
-            Save rates
-          </Button>
+          <div className="row gap-2" style={{ flexWrap: 'wrap' }}>
+            <Button size="sm" variant="secondary" loading={busy === 'refresh'} onClick={() => act('refresh')}>
+              Read petrol price now
+            </Button>
+            {!report.auto && (
+              <Button size="sm" variant="secondary" loading={busy === 'auto'} onClick={() => act('auto')}>
+                Use automatic rate
+              </Button>
+            )}
+          </div>
+          <div className="stack" style={{ marginTop: 6 }}>
+            <span className="t-sm">Or set your own <span className="t-muted">₹ / km per seat</span></span>
+            <span className="t-caption t-muted">Stops following the petrol price until you switch back</span>
+          </div>
+          <div className="row gap-2">
+            <input className="input" style={{ width: 96, flex: 'none', textAlign: 'right' }} inputMode="decimal" value={own} onChange={(e) => setOwn(e.target.value.replace(/[^0-9.]/g, '').slice(0, 5))} aria-label="Your own rate per km per seat" />
+            <Button size="sm" loading={busy === 'save'} onClick={() => act('save')}>
+              Save my rate
+            </Button>
+          </div>
         </div>
       ) : null}
       {msg && <p className="t-sm t-muted" style={{ marginTop: 6 }}>{msg}</p>}

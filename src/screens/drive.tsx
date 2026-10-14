@@ -20,6 +20,7 @@ import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
 import { driverShare } from '@/lib/fare'
 import { haversineKm } from '@/lib/geo'
+import { MAX_SEATS } from '@/lib/validation'
 import { PREFERENCE_LABEL, tierFor } from '@/lib/matching'
 import type { Booking, DriverLocation, RidePreference, RiderInfo, RiderLocation } from '@/lib/types'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
@@ -47,8 +48,8 @@ export function OfferRide() {
   const padding = useMapPadding(0.62)
   const incoming = (loc.state as { draft?: TripDraft } | null)?.draft
   const base = defaultQuery(CAMPUS)
-  const maxSeats = u.vehicle?.seats ?? 4
-  const [draft, setDraft] = useState<TripDraft>(incoming ? { ...incoming, seats: Math.min(Math.max(incoming.seats, 1), maxSeats) } : { pickup: base.pickup, drop: null, date: base.date, time: base.time, seats: Math.min(3, maxSeats) })
+  const maxSeats = Math.min(u.vehicle?.seats ?? 4, MAX_SEATS)
+  const [draft, setDraft] = useState<TripDraft>(incoming ? { ...incoming, seats: Math.min(Math.max(incoming.seats, 1), maxSeats) } : { pickup: base.pickup, drop: null, date: base.date, time: base.time, seats: maxSeats })
   const [detour, setDetour] = useState<'1' | '2' | '3' | '5'>('3')
   const [prefs, setPrefs] = useState<RidePreference[]>(u.preferences.filter((p) => p !== 'minimal_detour'))
   const [womenOnly, setWomenOnly] = useState(false)
@@ -201,7 +202,7 @@ export function OfferRide() {
                 {seatPrice === seat.suggested ? 'Suggested price' : <>Suggested {money(seat.suggested)} · <button type="button" className="t-strong t-primary" onClick={() => setPrice(null)}>use it</button></>} · you can set {money(seat.min)}–{money(seat.max)}
               </p>
               <p className="cost-working">
-                Suggested: {Math.round(cost.distanceKm)} km × {money(seat.perSeatKm)} a seat = {money(seat.suggested)}. Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
+                Suggested: {Math.round(cost.distanceKm)} km × ₹{seat.perSeatKm} a seat (from today’s petrol price) = {money(seat.suggested)}. Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
               </p>
             </div>
           </section>

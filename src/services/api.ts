@@ -371,8 +371,9 @@ export const admin = {
   train: () => mutate(post('/admin/ml/train')),
   addDemo: () => mutate(post<{ added: DemoCount; demo: DemoCount }>('/admin/demo')),
   removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
-  fareRates: () => request<{ rates: FareRates; limits: Record<keyof FareRates, { min: number; max: number }> }>('GET', '/admin/fare-rates'),
-  setFareRates: (p: Partial<FareRates>) => request<{ rates: FareRates }>('PUT', '/admin/fare-rates', p),
+  fareRates: () => request<FareRatesReport>('GET', '/admin/fare-rates'),
+  setFareRates: (p: Partial<FareRates> & { auto?: boolean }) => request<FareRatesReport>('PUT', '/admin/fare-rates', p),
+  refreshFuelPrice: () => mutate(post<FareRatesReport & { refreshed: boolean }>('/admin/fuel-price/refresh')),
 }
 
 export type AssistantAction =
@@ -495,6 +496,13 @@ export type OfferInput = {
 
 /** ₹ per km and ₹ per minute, set by the admin. */
 export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
+/** The admin's view: the rates in use, and the petrol price ₹ per km per seat follows unless the admin set it (`auto` false). */
+export type FareRatesReport = {
+  rates: FareRates
+  limits: Record<keyof FareRates, { min: number; max: number }>
+  auto: boolean
+  fuel: { petrol: number; source: string; at: string | null; kmPerLitre: number; people: number; perSeatKm: number }
+}
 /** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
   total: number

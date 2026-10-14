@@ -17,12 +17,14 @@ beforeAll(async () => {
 })
 
 describe('seat price (BlaBlaCar-style)', () => {
-  it('suggests distance × ₹2 a seat, and lets the driver choose half to one and a half times it', () => {
+  it('suggests distance × ₹ per km a seat, and lets the driver choose half to one and a half times it', () => {
     expect(fare.fareMode()).toBe('seat')
-    expect(fare.seatPrice(25)).toEqual({ suggested: 50, min: 30, max: 75, perSeatKm: 2 })
-    expect(fare.seatPrice(100)).toEqual({ suggested: 200, min: 100, max: 300, perSeatKm: 2 })
+    expect(fare.seatPrice(25, 2)).toEqual({ suggested: 50, min: 30, max: 75, perSeatKm: 2 })
+    expect(fare.seatPrice(100, 2)).toEqual({ suggested: 200, min: 100, max: 300, perSeatKm: 2 })
     // Short trips never go below ₹30 a seat.
-    expect(fare.seatPrice(4)).toEqual({ suggested: 30, min: 30, max: 45, perSeatKm: 2 })
+    expect(fare.seatPrice(4, 2)).toEqual({ suggested: 30, min: 30, max: 45, perSeatKm: 2 })
+    // By default the rate follows the petrol price: ₹111.21 ÷ 15 km/L ÷ 4 people = ₹1.85.
+    expect(fare.seatPrice(25)).toEqual({ suggested: 45, min: 30, max: 70, perSeatKm: 1.85 })
     // The admin's rate is used.
     expect(fare.seatPrice(25, 3).suggested).toBe(75)
   })
@@ -43,6 +45,8 @@ async function student(email: string) {
 describe('offering and booking at a fixed seat price', () => {
   it('lets the driver choose within the range, and riders pay that fixed price for their part of the route', async () => {
     const driver = await student('seat.driver@vit.edu.in')
+    // At most 6 rider seats (a 7-seater is the driver + 6).
+    expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Toyota', model: 'Innova', color: 'White', plate: 'MH01AB5555', seats: 7, fuel: 'diesel' })).status).toBe(400)
     await driver.put('/api/me/vehicle').set(H).send({ make: 'Maruti', model: 'Swift', color: 'Red', plate: 'MH01AB5555', seats: 3, fuel: 'petrol' })
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body

@@ -218,9 +218,11 @@ class Api {
   /* ---- Admin dashboard (admins only) ---- */
 
   Future<AdminStats> adminStats() async => AdminStats.fromJson(_map(await get('/admin/stats')));
-  /// Fare rates: {'perKm': ₹ per km, 'perMin': ₹ per minute}.
-  Future<Map<String, num>> adminFareRates() async => (_map(await get('/admin/fare-rates'))['rates'] as Map).cast<String, num>();
-  Future<Map<String, num>> setFareRates(Map<String, num> p) async => (_map(await put('/admin/fare-rates', p))['rates'] as Map).cast<String, num>();
+  /// The fare rate (₹ per km per seat) and the petrol price it follows: {rates, limits, auto, fuel}.
+  Future<Map<String, dynamic>> adminFareRates() async => _map(await get('/admin/fare-rates'));
+  /// {'perSeatKm': ₹} sets the admin's own rate; {'auto': true} follows the petrol price again.
+  Future<Map<String, dynamic>> setFareRates(Map<String, Object> p) async => _map(await put('/admin/fare-rates', p));
+  Future<Map<String, dynamic>> refreshFuelPrice() async => _map(await post('/admin/fuel-price/refresh'));
 
   /// [status]: scheduled | in_progress | completed | cancelled, or null for all.
   Future<List<AdminRide>> adminRides([String? status]) async =>

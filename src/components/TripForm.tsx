@@ -1,6 +1,7 @@
 import { ArrowDownUp, Calendar, Clock, Users } from 'lucide-react'
 import { useState } from 'react'
 import { isoDate } from '@/lib/format'
+import { MAX_SEATS } from '@/lib/validation'
 import type { Place } from '@/lib/types'
 import { PlacePicker } from './PlacePicker'
 import { IconButton, cx } from './ui'
@@ -15,7 +16,7 @@ export function TripForm({
   value,
   onChange,
   seatsLabel = 'Seats',
-  maxSeats = 4,
+  maxSeats = MAX_SEATS,
   errors = {},
 }: {
   value: TripDraft
