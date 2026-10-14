@@ -98,6 +98,9 @@ export function splitCost(cost: number, driverKm: number, riders: Rider[]): Map<
 /** What each person pays when the car is full (for ride cards: "from ₹105"). */
 export const perPersonIfFull = (cost: number, seats: number) => Math.max(MIN_FARE, round5(cost / (seats + 1)))
 
+/** The driver's own share: the trip cost minus what the riders pay (the driver pays it themselves). */
+export const driverShare = (cost: number, ridersPay: number) => Math.max(0, Math.round(cost - ridersPay))
+
 /** Driver's preview: what each rider pays with 1, 2, … riders going the whole way. */
 export function shareTable(cost: number, seats: number) {
   return Array.from({ length: seats }, (_, i) => ({ riders: i + 1, each: Math.max(MIN_FARE, round5(cost / (i + 2))) }))

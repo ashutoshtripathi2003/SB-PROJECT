@@ -50,7 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CUSHION, RATE_LIMITS, fareRates, perPersonIfFull, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { CUSHION, RATE_LIMITS, driverShare, fareRates, perPersonIfFull, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -712,8 +712,8 @@ api.post(
     const cost = tripCost(route)
     return {
       cost,
-      // What each rider would book at (with the cushion); it can drop at the start.
-      shares: shareTable(cost.total * CUSHION, p.seats),
+      // What each rider would book at (with the cushion; it can drop at the start), and what is left for the driver.
+      shares: shareTable(cost.total * CUSHION, p.seats).map((s) => ({ ...s, driver: driverShare(cost.total, s.riders * s.each) })),
       perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
       distanceKm: Math.round(route.distanceKm * 10) / 10,
       durationMin: route.durationMin,

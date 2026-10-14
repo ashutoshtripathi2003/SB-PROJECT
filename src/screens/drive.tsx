@@ -18,6 +18,7 @@ import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCar
 import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
+import { driverShare } from '@/lib/fare'
 import { haversineKm } from '@/lib/geo'
 import { PREFERENCE_LABEL, tierFor } from '@/lib/matching'
 import type { Booking, DriverLocation, RidePreference, RiderInfo, RiderLocation } from '@/lib/types'
@@ -193,6 +194,7 @@ export function OfferRide() {
                   <span key={s.riders} className="cost-shares__item">
                     <span className="t-body t-strong tabular">{money(s.each)}</span>
                     <span className="t-caption t-muted">each with {plural(s.riders, 'rider')}</span>
+                    <span className="t-caption t-muted">you pay {money(s.driver)}</span>
                   </span>
                 ))}
               </div>
@@ -536,11 +538,16 @@ export function DriverRide() {
         </div>
 
         {ride.fareMode === 'share' && ride.costTotal != null && (
-          <p className="t-sm t-muted" style={{ marginTop: -8 }}>
-            {ride.costSummary}. Split equally by the km each person rides, you included
-            {riders.length > 0 && ` — your own share is about ${money(Math.max(0, ride.costTotal - riders.reduce((s, b) => s + b.fare, 0)))}`}.
-            {ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}
-          </p>
+          <div className="stack gap-1" style={{ marginTop: -8 }}>
+            <p className="t-body">
+              <span className="t-strong">Your share {money(driverShare(ride.costTotal, riders.reduce((s, b) => s + b.fare, 0)))}</span>
+              <span className="t-muted"> · Riders pay {money(riders.reduce((s, b) => s + b.fare, 0))} · Trip cost {money(ride.costTotal)}</span>
+            </p>
+            <p className="t-sm t-muted">
+              {ride.costSummary}. Split equally by the km each person rides, you included: you pay your share yourself.
+              {ride.status === 'scheduled' && ' Fixed with the live traffic when you start the trip.'}
+            </p>
+          </div>
         )}
 
         {live && (
