@@ -4,9 +4,9 @@ name: Android app
 # or by hand from the Actions tab. The APK is attached to the "Android app (latest)"
 # release so it can be downloaded straight to a phone.
 #
-# Optional repository variable RIDESYNC_SERVER_URL (Settings → Secrets and variables →
-# Actions → Variables): the online server address to build into the app. Without it, the
-# app asks for a server link on first launch (e.g. the share.bat link from a laptop).
+# The online server address built into the app: our Oracle server
+# (https://ridesync-vit.duckdns.org). The repository variable RIDESYNC_SERVER_URL
+# (Settings → Secrets and variables → Actions → Variables) replaces it if set.
 
 on:
   push:
@@ -67,7 +67,7 @@ jobs:
           GM=false
           if [ -n "$GOOGLE_MAPS_ANDROID_KEY" ]; then GM=true; fi
           echo "Google Maps in the app: $GM"
-          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL }} --dart-define=GOOGLE_MAPS=$GM --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}"
+          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL || 'https://ridesync-vit.duckdns.org' }} --dart-define=GOOGLE_MAPS=$GM --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}"
           # One APK that works on every phone, plus a smaller one for modern (64-bit) phones.
           flutter build apk $ARGS
           flutter build apk --split-per-abi $ARGS
