@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, BadgeCheck, CarFront, IndianRupee, Mail, MailCheck, Search, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Logo } from '@/components/Logo'
 import { RouteArt } from '@/components/RouteArt'
 import { BackButton } from '@/components/TopBar'
@@ -103,6 +103,9 @@ export function Landing() {
             </Button>
           </div>
           <p className="t-caption t-muted landing__note">Sign in with your @{domain} email.</p>
+          <p className="t-caption t-muted landing__note">
+            <Link to="/terms">Terms of Use</Link> · <Link to="/privacy">Privacy Policy</Link>
+          </p>
         </div>
       </main>
     </div>
@@ -334,6 +337,9 @@ export function Login() {
               <button type="button" className="link-btn" onClick={switchMode}>
                 {signup ? 'Log in' : 'Create account'}
               </button>
+            </p>
+            <p className="auth__switch t-caption">
+              By continuing, you agree to our <Link to="/terms">Terms of Use</Link> and <Link to="/privacy">Privacy Policy</Link>.
             </p>
           </motion.div>
         ) : (

@@ -539,6 +539,14 @@ export function Settings() {
         </section>
 
         <section className="section">
+          <h2 className="section__title">Legal</h2>
+          <div className="list">
+            <ListRow icon={<ShieldCheck />} title="Privacy Policy" subtitle="What we collect and your rights" onClick={() => nav('/privacy')} />
+            <ListRow icon={<FileText />} title="Terms of Use" subtitle="Rules for drivers and riders" onClick={() => nav('/terms')} />
+          </div>
+        </section>
+
+        <section className="section">
           <h2 className="section__title">Danger zone</h2>
           <div className="list">
             <ListRow

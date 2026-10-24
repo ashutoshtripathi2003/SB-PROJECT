@@ -98,6 +98,8 @@ export const env = {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
+  /** Shown in the Privacy Policy and Terms as the contact / grievance address. */
+  supportEmail: (process.env.SUPPORT_EMAIL || '').trim(),
 }
 
 export const smtpConfigured = () => !!(env.smtp.host && env.smtp.user && env.smtp.pass && env.smtp.from)

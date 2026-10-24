@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../state/session.dart';
 import '../theme.dart';
+import '../util/legal.dart';
 import '../api/api.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
@@ -364,6 +365,15 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ]),
           ),
+        const SizedBox(height: 12),
+        Center(
+          child: Wrap(alignment: WrapAlignment.center, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            const Text('By continuing, you agree to our ', style: TextStyle(color: RS.ink500, fontSize: 12)),
+            GestureDetector(onTap: () => openLegal(context, '/terms'), child: const Text('Terms of Use', style: TextStyle(color: RS.primary, fontSize: 12, fontWeight: FontWeight.w600))),
+            const Text(' and ', style: TextStyle(color: RS.ink500, fontSize: 12)),
+            GestureDetector(onTap: () => openLegal(context, '/privacy'), child: const Text('Privacy Policy', style: TextStyle(color: RS.primary, fontSize: 12, fontWeight: FontWeight.w600))),
+          ]),
+        ),
         const SizedBox(height: 8),
         Center(
           child: _admin

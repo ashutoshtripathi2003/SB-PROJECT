@@ -19,6 +19,7 @@ import { TripStatus } from './screens/trip'
 import { Wallet } from './screens/wallet'
 import { SharedTripPage } from './screens/sharedTrip'
 import { AdminApp } from './screens/admin'
+import { PrivacyPolicy, TermsOfUse } from './screens/legal'
 import { SearchProvider } from './state/search'
 
 export function App() {
@@ -35,6 +36,8 @@ export function App() {
               <Route path="/design-system" element={<DesignSystem />} />
               <Route path="/states" element={<StatesGallery />} />
               <Route path="/t/:token" element={<SharedTripPage />} />
+              <Route path="/privacy" element={<PrivacyPolicy />} />
+              <Route path="/terms" element={<TermsOfUse />} />
               <Route path="/admin" element={<AdminApp />} />
               <Route path="/admin/:tab" element={<AdminApp />} />
 
