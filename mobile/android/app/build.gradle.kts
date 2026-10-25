@@ -30,6 +30,10 @@ android {
         manifestPlaceholders["googleMapsKey"] = System.getenv("GOOGLE_MAPS_ANDROID_KEY") ?: ""
     }
 
+    // Private Play Store upload key: used only when RIDESYNC_UPLOAD_KEYSTORE points to it (the
+    // GitHub Actions bundle step sets it from repository secrets). Never commit that key.
+    val uploadKeystore = System.getenv("RIDESYNC_UPLOAD_KEYSTORE")?.takeIf { it.isNotBlank() }
+
     signingConfigs {
         // Test-distribution key, committed so every GitHub build can update the
         // app already on a phone. Use your own private key for the Play Store.
@@ -39,11 +43,19 @@ android {
             keyAlias = "ridesync"
             keyPassword = "ridesync-test"
         }
+        if (uploadKeystore != null) {
+            create("playUpload") {
+                storeFile = file(uploadKeystore)
+                storePassword = System.getenv("RIDESYNC_UPLOAD_PASSWORD")
+                keyAlias = System.getenv("RIDESYNC_UPLOAD_ALIAS") ?: "upload"
+                keyPassword = System.getenv("RIDESYNC_UPLOAD_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("ridesyncTest")
+            signingConfig = signingConfigs.getByName(if (uploadKeystore != null) "playUpload" else "ridesyncTest")
         }
     }
 }

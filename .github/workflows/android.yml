@@ -4,6 +4,12 @@ name: Android app
 # or by hand from the Actions tab. The APK is attached to the "Android app (latest)"
 # release so it can be downloaded straight to a phone.
 #
+# Play Store: when the repository secrets RIDESYNC_UPLOAD_KEYSTORE_B64 (the upload key, base64)
+# and RIDESYNC_UPLOAD_PASSWORD are set, it also builds RideSync.aab signed with that private
+# upload key (download it from the run's artifacts and upload it in Play Console). The APKs stay
+# on the shared test key so phones that installed them from GitHub can keep updating.
+# Every build gets a higher version code (the run number), as Play Console requires.
+#
 # The online server address built into the app: our Oracle server
 # (https://ridesync-vit.duckdns.org). The repository variable RIDESYNC_SERVER_URL
 # (Settings → Secrets and variables → Actions → Variables) replaces it if set.
@@ -59,20 +65,42 @@ jobs:
             echo "Phone notifications: off (add the GOOGLE_SERVICES_JSON secret to turn them on)"
           fi
 
-      - name: Build APKs
+      - name: Build settings
         env:
-          # Optional repository secret: a Google Maps key restricted to Android apps.
           GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
         run: |
           GM=false
           if [ -n "$GOOGLE_MAPS_ANDROID_KEY" ]; then GM=true; fi
           echo "Google Maps in the app: $GM"
-          ARGS="--release --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL || 'https://ridesync-vit.duckdns.org' }} --dart-define=GOOGLE_MAPS=$GM --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}"
+          echo "BUILD_ARGS=--release --build-number=${{ github.run_number }} --dart-define=RIDESYNC_SERVER_URL=${{ vars.RIDESYNC_SERVER_URL || 'https://ridesync-vit.duckdns.org' }} --dart-define=GOOGLE_MAPS=$GM --dart-define=RIDESYNC_BUILD=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build APKs
+        env:
+          # Optional repository secret: a Google Maps key restricted to Android apps.
+          GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
+        run: |
           # One APK that works on every phone, plus a smaller one for modern (64-bit) phones.
-          flutter build apk $ARGS
-          flutter build apk --split-per-abi $ARGS
+          flutter build apk $BUILD_ARGS
+          flutter build apk --split-per-abi $BUILD_ARGS
+
+      - name: Build Play Store bundle (AAB)
+        env:
+          GOOGLE_MAPS_ANDROID_KEY: ${{ secrets.GOOGLE_MAPS_ANDROID_KEY }}
+          UPLOAD_KEYSTORE_B64: ${{ secrets.RIDESYNC_UPLOAD_KEYSTORE_B64 }}
+          RIDESYNC_UPLOAD_PASSWORD: ${{ secrets.RIDESYNC_UPLOAD_PASSWORD }}
+        run: |
+          if [ -z "$UPLOAD_KEYSTORE_B64" ] || [ -z "$RIDESYNC_UPLOAD_PASSWORD" ]; then
+            echo "Play Store bundle: skipped (add RIDESYNC_UPLOAD_KEYSTORE_B64 and RIDESYNC_UPLOAD_PASSWORD secrets)"
+            exit 0
+          fi
+          printf '%s' "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          RIDESYNC_UPLOAD_KEYSTORE="$RUNNER_TEMP/upload.jks" flutter build appbundle $BUILD_ARGS
+          rm -f "$RUNNER_TEMP/upload.jks"
+          cp build/app/outputs/bundle/release/app-release.aab RideSync.aab
 
       - name: Publish APK
+        # Only main updates the public download; test runs on other branches keep their files as artifacts.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -91,3 +119,10 @@ jobs:
           path: |
             mobile/RideSync.apk
             mobile/RideSync-small.apk
+
+      - name: Upload Play Store bundle
+        if: hashFiles('mobile/RideSync.aab') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: RideSync-play-store-bundle
+          path: mobile/RideSync.aab

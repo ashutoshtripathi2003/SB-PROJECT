@@ -36,7 +36,7 @@ function LegalPage({ title, children }: { title: string; children: ReactNode }) 
         <p className="t-sm t-muted">Last updated: {LEGAL_UPDATED}</p>
         {children}
         <p className="legal__switch t-sm t-muted">
-          <Link to="/privacy">Privacy Policy</Link> · <Link to="/terms">Terms of Use</Link>
+          <Link to="/privacy">Privacy Policy</Link> · <Link to="/terms">Terms of Use</Link> · <Link to="/delete-account">Delete your account</Link>
         </p>
       </main>
     </div>
@@ -126,7 +126,7 @@ export function PrivacyPolicy() {
         We keep your data while your account is active. When you delete your account (Settings → Delete account), we remove your name, email, mobile
         number, student ID, photo, UPI ID, emergency contacts, ID card photo, car details, logins and notification tokens. Records of past rides and
         payments are kept without your personal details, so other users’ histories and any disputes or refunds stay correct. Older copies in backups are
-        overwritten within 14 days.
+        overwritten within 14 days. You can also follow the steps on our <Link to="/delete-account">account deletion page</Link>.
       </p>
 
       <h2>7. Your rights</h2>
@@ -145,6 +145,44 @@ export function PrivacyPolicy() {
       <h2>10. Contact</h2>
       <p>
         Questions or complaints about your data: <Contact />.
+      </p>
+    </LegalPage>
+  )
+}
+
+/** Public account-deletion page (Google Play requires a web link, usable without the app). */
+export function DeleteAccount() {
+  return (
+    <LegalPage title="Delete your RideSync account">
+      <p>You can delete your RideSync AI account and its personal data at any time. Deleting is permanent and cannot be undone.</p>
+
+      <h2>Delete it yourself (fastest)</h2>
+      <ul>
+        <li>
+          <b>Android app:</b> open RideSync → <b>Profile</b> → <b>Delete account</b> → confirm.
+        </li>
+        <li>
+          <b>Website:</b> sign in at <a href="/login">ridesync-vit.duckdns.org</a> → <b>Profile</b> → <b>Settings</b> → <b>Delete account</b> → confirm.
+        </li>
+      </ul>
+      <p>Your upcoming rides and bookings are cancelled first, and riders and drivers on them are told. Online payments for cancelled bookings are refunded.</p>
+
+      <h2>Can’t open the app?</h2>
+      <p>
+        Write to <Contact /> from your college email address and ask us to delete your account. We will confirm and delete it within 7 days.
+      </p>
+
+      <h2>What is deleted</h2>
+      <ul>
+        <li>Your name, college email, mobile number, student ID, programme, profile photo, UPI ID and emergency contacts.</li>
+        <li>Your college ID card photo and the details read from it.</li>
+        <li>Your car details, all logins on every device, and phone notification tokens.</li>
+      </ul>
+
+      <h2>What is kept</h2>
+      <p>
+        Records of past rides, bookings and payments are kept <b>without your name or contact details</b>, so other students’ trip histories, refunds
+        and any disputes stay correct. Copies in our server backups are overwritten within 14 days.
       </p>
     </LegalPage>
   )
