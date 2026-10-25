@@ -8,6 +8,7 @@ import '../state/session.dart';
 import '../theme.dart';
 import '../util/checkout.dart';
 import '../util/format.dart';
+import '../util/legal.dart';
 import '../util/validation.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
@@ -75,6 +76,8 @@ class ProfileTab extends StatelessWidget {
           _group([
             if (u.isAdmin && !u.adminOnly) _row(Icons.admin_panel_settings_outlined, 'Admin dashboard', 'Rides, students and ID checks', () => open(const AdminShell(embedded: true))),
             _row(Icons.help_outline_rounded, 'Help & support', 'FAQ and how RideSync works', () => open(const HelpScreen())),
+            _row(Icons.privacy_tip_outlined, 'Privacy Policy', 'What we collect and your rights', () => openLegal(context, '/privacy')),
+            _row(Icons.description_outlined, 'Terms of Use', 'Rules for drivers and riders', () => openLegal(context, '/terms')),
             if (!session.hasBuiltInServer) _row(Icons.dns_outlined, 'Change server', session.server, () => session.changeServer()),
             _row(Icons.logout, 'Log out', null, () => session.signOut()),
             _row(Icons.delete_outline, 'Delete account', 'Permanently remove your account', () => _delete(context), danger: true),

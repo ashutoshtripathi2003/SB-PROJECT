@@ -49,3 +49,8 @@ app.*.map.json
 # Generated from google-services.json at build time (tool/firebase_android.py)
 android/app/src/main/res/values/firebase.xml
 google-services.json
+
+# Play Store upload key: keep it private (GitHub secret + your own safe copy), never in git
+*.keystore
+upload*.jks
+key.properties

@@ -113,7 +113,7 @@ function appBase(req: Request) {
 }
 
 api.get('/config', (req, res) => {
-  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: fareMode(), rates: fareRates(), cushion: CUSHION } })
+  res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: fareMode(), rates: fareRates(), cushion: CUSHION }, supportEmail: env.supportEmail || null })
 })
 
 // Full-page redirects (GET), so they work in every mobile browser.
@@ -334,9 +334,15 @@ api.delete(
         scheduleRefund(b)
         affected.add(String(rideRow(String(b.ride_id)).driver_id))
       }
-      run(`UPDATE users SET deleted = 1, email = ?, phone = '', student_id = '', upi_id = NULL, photo = NULL, emergency_contacts = '[]' WHERE id = ?`, `deleted+${id}@deleted.invalid`, id)
+      run(
+        `UPDATE users SET deleted = 1, email = ?, name = 'Deleted user', phone = '', student_id = '', programme = NULL, upi_id = NULL, photo = NULL,
+           emergency_contacts = '[]', id_card = NULL, id_ocr = NULL, id_note = NULL WHERE id = ?`,
+        `deleted+${id}@deleted.invalid`,
+        id,
+      )
       run(`DELETE FROM vehicles WHERE user_id = ?`, id)
       run(`DELETE FROM sessions WHERE user_id = ?`, id)
+      run(`DELETE FROM push_tokens WHERE user_id = ?`, id)
     })
     res.clearCookie('rs_session', { path: '/' })
     await flushRefunds()

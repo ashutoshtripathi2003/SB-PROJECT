@@ -294,6 +294,8 @@ export type AppConfig = {
     vectorStyles?: string[]
     olaKey?: string | null
   }
+  /** Contact address for privacy and support questions (SUPPORT_EMAIL on the server). */
+  supportEmail?: string | null
 }
 
 export function useConfig() {
