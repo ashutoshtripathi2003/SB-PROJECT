@@ -1,12 +1,12 @@
 import { db, one, run } from './db'
-import { DEFAULT_PETROL, fuelPrice, perSeatKmFromPetrol } from './fuel'
+import { DEFAULT_PETROL, fuelCost, fuelPrice, perSeatKmFromPetrol, type FuelType } from './fuel'
 
 /**
  * Fares, exactly the BlaBlaCar way: a fixed price per seat that the driver sets.
  *
  *   suggested price = route km × ₹ per km per seat
- *   ₹ per km per seat = today's petrol price ÷ 15 km/L ÷ 4 people (automatic, see fuel.ts; ₹111.21 → ₹1.85),
- *                       or a rate the admin types in instead
+ *   ₹ per km per seat = the car's fuel price ÷ its km per litre (kg, kWh) in city traffic ÷ 4 people
+ *                       (automatic, see fuel.ts; petrol ₹111.21 ÷ 10 km/L ÷ 4 → ₹2.80), or a rate the admin types in instead
  *   driver may set  = half to one and a half times the suggestion, never below ₹30
  *   a rider pays    = the seat price for the part of the route they ride (matching: at least 40% of it)
  *
@@ -52,6 +52,16 @@ export function fareRates(): FareRates {
   rates.perSeatKm = s.perSeatKmAuto === false && s.perSeatKm != null ? s.perSeatKm : clampRate(perSeatKmFromPetrol(fuelPrice().petrol))
   return rates
 }
+
+/**
+ * ₹ per km per seat for this car: its fuel's price ÷ its km per unit (the driver's own figure, else the typical
+ * city figure) ÷ 4 people. The admin's own rate, when set, is used for every car.
+ */
+export function rateFor(vehicle?: { fuel: FuelType; mileage?: number }) {
+  const cost = fuelCost(vehicle?.fuel ?? 'petrol', vehicle?.mileage)
+  return perSeatKmAuto() ? { ...cost, auto: true } : { ...cost, perSeatKm: fareRates().perSeatKm, auto: false }
+}
+export type Rate = ReturnType<typeof rateFor>
 
 /** Saves rates. Setting perSeatKm switches it to the admin's own rate; `auto: true` hands it back to the petrol price. */
 export function setFareRates(p: Partial<FareRates> & { auto?: boolean }) {

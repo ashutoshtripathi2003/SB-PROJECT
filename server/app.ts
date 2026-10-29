@@ -37,7 +37,17 @@ export function createApp() {
   // Serve the built web app (npm run build) with SPA fallback.
   const dist = resolve(process.cwd(), 'dist')
   if (existsSync(dist)) {
-    app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, path) => path.includes('/assets/') && res.setHeader('Cache-Control', 'public, max-age=31536000, immutable') }))
+    app.use(
+      express.static(dist, {
+        index: false,
+        maxAge: '1h',
+        setHeaders: (res, path) => {
+          if (path.includes('/assets/')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+          // The service worker and manifest must update as soon as a new version is deployed.
+          else if (/(sw\.js|manifest\.webmanifest)$/.test(path)) res.setHeader('Cache-Control', 'no-cache')
+        },
+      }),
+    )
     app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(join(dist, 'index.html')))
   }
 

@@ -153,8 +153,8 @@ addColumn('bookings', 'off_route_alerted_at', 'TEXT')
 addColumn('bookings', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'women_only', 'INTEGER NOT NULL DEFAULT 0')
-// Fair fares (server/fare.ts): the trip's cost and each rider's equal share. (The mileage columns are from an
-// earlier fare design and are no longer used.)
+// Fair fares (server/fare.ts). mileage_city: the driver's own km per litre (kg, kWh) in city traffic, used for the
+// suggested seat price and CO₂ (server/fuel.ts); the smooth / traffic columns are from an earlier design and unused.
 addColumn('vehicles', 'mileage_smooth', 'REAL')
 addColumn('vehicles', 'mileage_city', 'REAL')
 addColumn('vehicles', 'mileage_traffic', 'REAL')
@@ -170,6 +170,10 @@ addColumn('bookings', 'order_amount', 'INTEGER')
 addColumn('bookings', 'settle_due', 'INTEGER NOT NULL DEFAULT 0')
 // The km this rider travels (any fare mode), for the CO₂ estimate in server/co2.ts.
 addColumn('bookings', 'rider_km', 'REAL')
+// CO₂ saved by this booking, worked out when it is booked (server/co2.ts).
+addColumn('bookings', 'co2_kg', 'REAL')
+// How the student usually got to college before RideSync (server/co2.ts).
+addColumn('users', 'usual_mode', 'TEXT')
 addColumn('users', 'id_card', 'TEXT')
 addColumn('users', 'id_status', "TEXT NOT NULL DEFAULT 'none'")
 addColumn('users', 'id_note', 'TEXT')

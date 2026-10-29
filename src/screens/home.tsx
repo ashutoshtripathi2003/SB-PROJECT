@@ -1,6 +1,7 @@
 import { ArrowRight, Bell, CarFront, ChevronRight, Search } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { InstallHint } from '@/components/InstallHint'
 import { Logo } from '@/components/Logo'
 import { MapView, type MapRoute } from '@/components/MapView'
 import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
@@ -82,6 +83,7 @@ export function Home() {
       }
     >
       <div className="stack gap-4">
+        <InstallHint />
         <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? Math.min(u.vehicle?.seats ?? 4, MAX_SEATS) : MAX_SEATS} />
         <div className="stack gap-2">
           <Button size="lg" block onClick={() => submit()} icon={mode === 'offer' ? <CarFront /> : <Search />}>

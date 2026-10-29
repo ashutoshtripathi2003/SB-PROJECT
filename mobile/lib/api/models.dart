@@ -56,7 +56,10 @@ class Vehicle {
   final String plate;
   final int seats;
   final String fuel;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel});
+
+  /// The car's own km per litre (kg for CNG, kWh for electric) in city traffic, if the driver gave it.
+  final double? mileage;
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileage});
   factory Vehicle.fromJson(Map<String, dynamic> j) {
     return Vehicle(
         id: _s(j['id']),
@@ -65,7 +68,8 @@ class Vehicle {
         color: _s(j['color']),
         plate: _s(j['plate']),
         seats: _i(j['seats']),
-        fuel: _s(j['fuel']));
+        fuel: _s(j['fuel']),
+        mileage: j['mileage'] == null ? null : _d(j['mileage']));
   }
   String get title => '$color $make $model';
 }
@@ -123,6 +127,9 @@ class User extends PublicUser {
   final String studentId;
   final String gender;
   final String? commute;
+
+  /// How they usually got to college before RideSync (car, cab, auto, bike, train, bus, walk): decides the CO₂ saved.
+  final String? usualMode;
   final String? upiId;
   final List<String> preferences;
   final List<EmergencyContact> emergencyContacts;
@@ -146,6 +153,7 @@ class User extends PublicUser {
         studentId = _s(j['studentId']),
         gender = _s(j['gender']).isEmpty ? 'undisclosed' : _s(j['gender']),
         commute = _ns(j['commute']),
+        usualMode = _ns(j['usualMode']),
         upiId = _ns(j['upiId']),
         preferences = _strings(j['preferences']),
         emergencyContacts = _maps(j['emergencyContacts']).map((c) => EmergencyContact(_s(c['name']), _s(c['phone']))).toList(),
@@ -373,6 +381,10 @@ class CostPreview {
   /// Suggested price per seat (route km × [seatPerKm]) and the range the driver may choose from.
   final int seatSuggested, seatMin, seatMax;
   final double seatPerKm;
+
+  /// How [seatPerKm] was worked out: '₹111.21 a litre of petrol ÷ 6 km a litre (your car) ÷ 4 people', or null
+  /// when the admin set the rate.
+  final String? seatWorking;
   final double km, perKm, perMin;
   final String summary;
 
@@ -392,7 +404,15 @@ class CostPreview {
         seatMin = j['seat'] is Map ? _i((j['seat'] as Map)['min']) : 0,
         seatMax = j['seat'] is Map ? _i((j['seat'] as Map)['max']) : 0,
         seatPerKm = j['seat'] is Map ? _d((j['seat'] as Map)['perSeatKm']) : 0,
+        seatWorking = _working(j['seat']),
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']), _i(s['driver']))).toList();
+}
+
+String? _working(dynamic seat) {
+  final r = seat is Map ? seat['rate'] : null;
+  if (r is! Map || r['auto'] != true) return null;
+  String n(dynamic v) => _d(v).toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  return '₹${n(r['price'])} a ${r['unit']} of ${_s(r['label']).toLowerCase()} ÷ ${n(r['kmPerUnit'])} km a ${r['unit']}${r['ownMileage'] == true ? ' (your car)' : ' (typical in city traffic)'} ÷ ${r['people']} people';
 }
 
 class FeedItem {

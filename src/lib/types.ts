@@ -13,6 +13,9 @@ export type Place = {
   googlePlaceId?: string
 }
 
+/** How a student usually gets to college (for the CO₂ estimate, server/co2.ts). */
+export type TravelMode = 'car' | 'cab' | 'auto' | 'bike' | 'train' | 'bus' | 'walk'
+
 export type CommuteMode = 'driver' | 'rider' | 'both'
 export type Gender = 'female' | 'male' | 'other' | 'undisclosed'
 
@@ -26,6 +29,8 @@ export type Vehicle = {
   plate: string
   seats: number // passenger seats excluding driver
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
+  /** The driver's own km per litre (kg for CNG, kWh for electric) in city traffic, if they gave it. */
+  mileage?: number
 }
 
 /** What other students can see about you. */
@@ -50,6 +55,8 @@ export type User = PublicUser & {
   studentId: string
   gender: Gender
   commute?: CommuteMode
+  /** How they usually got to college before RideSync; decides the CO₂ their shared rides save. */
+  usualMode?: TravelMode
   upiId?: string
   preferences: RidePreference[]
   emergencyContacts: { name: string; phone: string }[]
@@ -128,7 +135,7 @@ export type Booking = {
   fare: number // total for all seats: the current share (final once the trip starts)
   /** The km this rider travels in the car. */
   riderKm?: number
-  /** Estimated CO₂ saved by sharing (server/co2.ts): riderKm × seats ÷ 10 km a litre × 2.31 kg a litre. */
+  /** Estimated CO₂ saved by sharing (server/co2.ts): the rider's replaced trips minus the driver's detour. */
   co2Kg?: number
   /** Fair fares: the most this booking can cost; `fare` falls below it as more riders join. */
   fareMax?: number

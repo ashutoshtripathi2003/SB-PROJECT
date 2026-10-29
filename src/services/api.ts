@@ -349,7 +349,7 @@ export const auth = {
   },
 }
 
-export type ProfilePatch = Partial<Pick<User, 'name' | 'phone' | 'studentId' | 'programme' | 'gender' | 'commute' | 'upiId' | 'preferences' | 'emergencyContacts' | 'photo'>> & {
+export type ProfilePatch = Partial<Pick<User, 'name' | 'phone' | 'studentId' | 'programme' | 'gender' | 'commute' | 'usualMode' | 'upiId' | 'preferences' | 'emergencyContacts' | 'photo'>> & {
   onboarded?: true
 }
 
@@ -374,7 +374,7 @@ export const admin = {
   addDemo: () => mutate(post<{ added: DemoCount; demo: DemoCount }>('/admin/demo')),
   removeDemo: () => mutate(request<{ removed: DemoCount; demo: DemoCount }>('DELETE', '/admin/demo')),
   fareRates: () => request<FareRatesReport>('GET', '/admin/fare-rates'),
-  setFareRates: (p: Partial<FareRates> & { auto?: boolean }) => request<FareRatesReport>('PUT', '/admin/fare-rates', p),
+  setFareRates: (p: Partial<FareRates> & { auto?: boolean; prices?: Partial<Record<Vehicle['fuel'], number>> }) => request<FareRatesReport>('PUT', '/admin/fare-rates', p),
   refreshFuelPrice: () => mutate(post<FareRatesReport & { refreshed: boolean }>('/admin/fuel-price/refresh')),
 }
 
@@ -406,7 +406,7 @@ export type MlReport = {
   assistant?: { accuracy: number; examples: number; intents: number; messages30d: number; understoodRate: number | null; topIntents: { intent: string; n: number }[] }
 }
 
-export async function saveVehicle(v: Omit<Vehicle, 'id'>) {
+export async function saveVehicle(v: Omit<Vehicle, 'id' | 'mileage'> & { mileage?: number | null }) {
   const u = await request<User>('PUT', '/me/vehicle', v)
   setCached('/me', u)
   return u
@@ -498,12 +498,26 @@ export type OfferInput = {
 
 /** ₹ per km and ₹ per minute, set by the admin. */
 export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
-/** The admin's view: the rates in use, and the petrol price ₹ per km per seat follows unless the admin set it (`auto` false). */
+/** The admin's view: the rates in use, and the fuel prices ₹ per km per seat follows unless the admin set it (`auto` false). */
 export type FareRatesReport = {
   rates: FareRates
   limits: Record<keyof FareRates, { min: number; max: number }>
   auto: boolean
-  fuel: { petrol: number; source: string; at: string | null; kmPerLitre: number; people: number; perSeatKm: number }
+  fuel: { petrol: number; diesel: number; cng: number; ev: number; source: string; at: string | null; kmPerLitre: number; people: number; perSeatKm: number }
+  /** Every fuel: price, typical city mileage, ₹ per km per seat, CO₂ per km; `auto` = read from fuel-price pages. */
+  fuels: (FuelRate & { auto: boolean; priceRange: { min: number; max: number } })[]
+}
+/** What one km in a car costs and gives off: fuel price ÷ km per unit ÷ people = ₹ per km per seat. */
+export type FuelRate = {
+  fuel: Vehicle['fuel']
+  label: string
+  unit: 'litre' | 'kg' | 'kWh'
+  price: number
+  kmPerUnit: number
+  ownMileage: boolean
+  people: number
+  perSeatKm: number
+  co2KgPerKm: number
 }
 /** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
@@ -522,7 +536,7 @@ export type CostPreview = {
   /** 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split. */
   mode: 'seat' | 'share'
   /** The suggested price per seat (route km × ₹ per km per seat) and the range the driver may choose from. */
-  seat: { suggested: number; min: number; max: number; perSeatKm: number }
+  seat: { suggested: number; min: number; max: number; perSeatKm: number; rate?: FuelRate & { auto: boolean } }
   /** Each rider's price with 1, 2, … riders, and the driver's own share then. */
   shares: { riders: number; each: number; driver: number }[]
   perPersonIfFull: number

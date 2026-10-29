@@ -579,6 +579,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
           TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleScreen())), child: const Text('Add car')),
         ],
         const SizedBox(height: 28),
+        Text('How did you usually get to college?', style: RS.heading(17)),
+        const SizedBox(height: 4),
+        const Text('Before RideSync. Your CO₂ saved counts only what sharing really replaces: a car, cab, auto or bike trip — not a train or bus.', style: TextStyle(color: RS.ink500)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final (v, l) in const [('car', 'My own car'), ('cab', 'Cab'), ('auto', 'Auto'), ('bike', 'Bike / scooter'), ('train', 'Local train'), ('bus', 'Bus'), ('walk', 'Walk / cycle')])
+            ChoiceChip(label: Text(l), selected: u.usualMode == v, onSelected: (_) => _set({'usualMode': v})),
+        ]),
+        const SizedBox(height: 28),
         Text('Ride preferences', style: RS.heading(17)),
         const SizedBox(height: 4),
         const Text('Applied by default when you search or offer. AI matching scores rides higher when they fit.', style: TextStyle(color: RS.ink500)),
@@ -673,7 +682,7 @@ class NotificationSettingsScreen extends StatelessWidget {
 }
 
 const _faq = [
-  ('How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (about ₹1.85 per km at today’s petrol price; it follows the real petrol price automatically), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'),
+  ('How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance and the driver’s car: its fuel price (petrol, diesel, CNG or electric, kept up to date) ÷ the km it really does per litre in city traffic ÷ 4 people — about ₹2.80 a km for a typical petrol car. The driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'),
   ('What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this match?” on any ride to see the breakdown.'),
   ('What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'),
   ('Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'),

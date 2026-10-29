@@ -207,7 +207,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                   if (_seatPrice != cost.seatSuggested) Center(child: TextButton(onPressed: () => setState(() => _price = null), child: const Text('Use the suggested price'))),
                   const SizedBox(height: 10),
                   Text(
-                    'Like BlaBlaCar: suggested ${km(_route!.distanceKm)} × ₹${cost.seatPerKm.toStringAsFixed(2).replaceAll(RegExp(r"\.?0+$"), "")} a seat (from today’s petrol price) = ${money(cost.seatSuggested)}; you can change it. Riders see the price before booking and it never changes. Riders going only part of the way pay for their part (at least ₹30). With every seat taken you receive ${money(_seats * _seatPrice!)}.',
+                    'Like BlaBlaCar: suggested ${km(_route!.distanceKm)} × ₹${cost.seatPerKm.toStringAsFixed(2).replaceAll(RegExp(r"\.?0+$"), "")} a seat${cost.seatWorking == null ? '' : ' (${cost.seatWorking})'} = ${money(cost.seatSuggested)}; you can change it. Riders see the price before booking and it never changes. Riders going only part of the way pay for their part (at least ₹30). With every seat taken you receive ${money(_seats * _seatPrice!)}.',
                     style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4),
                   ),
                 ]),

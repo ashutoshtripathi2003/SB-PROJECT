@@ -202,7 +202,13 @@ export function OfferRide() {
                 {seatPrice === seat.suggested ? 'Suggested price' : <>Suggested {money(seat.suggested)} · <button type="button" className="t-strong t-primary" onClick={() => setPrice(null)}>use it</button></>} · you can set {money(seat.min)}–{money(seat.max)}
               </p>
               <p className="cost-working">
-                Suggested: {Math.round(cost.distanceKm)} km × ₹{seat.perSeatKm} a seat (from today’s petrol price) = {money(seat.suggested)}. Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
+                Suggested: {Math.round(cost.distanceKm)} km × ₹{seat.perSeatKm} a seat = {money(seat.suggested)}.{' '}
+                {seat.rate?.auto && (
+                  <>
+                    (₹{seat.rate.perSeatKm} = {seat.rate.label.toLowerCase()} ₹{seat.rate.price} a {seat.rate.unit} ÷ {seat.rate.kmPerUnit} km a {seat.rate.unit}
+                    {seat.rate.ownMileage ? ' (your car)' : ' (typical in city traffic)'} ÷ {seat.rate.people} people.){' '}
+                  </>
+                )} Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
               </p>
             </div>
           </section>

@@ -1,3 +1,4 @@
+import { InstallHint } from '@/components/InstallHint'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, BadgeCheck, CarFront, IndianRupee, Mail, MailCheck, Search, ShieldCheck, Terminal } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
@@ -103,6 +104,7 @@ export function Landing() {
             </Button>
           </div>
           <p className="t-caption t-muted landing__note">Sign in with your @{domain} email.</p>
+          <InstallHint beforeLogin />
           <p className="t-caption t-muted landing__note">
             <Link to="/terms">Terms of Use</Link> · <Link to="/privacy">Privacy Policy</Link>
           </p>
