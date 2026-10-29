@@ -126,6 +126,10 @@ export type Booking = {
   drop: Place
   seats: number
   fare: number // total for all seats: the current share (final once the trip starts)
+  /** The km this rider travels in the car. */
+  riderKm?: number
+  /** Estimated CO₂ saved by sharing (server/co2.ts): riderKm × seats ÷ 10 km a litre × 2.31 kg a litre. */
+  co2Kg?: number
   /** Fair fares: the most this booking can cost; `fare` falls below it as more riders join. */
   fareMax?: number
   /** True once the driver started the trip and the share is fixed. */

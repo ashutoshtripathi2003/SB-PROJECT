@@ -539,7 +539,9 @@ class _TripView extends StatelessWidget {
         'driver_arriving' => '${d.driver.firstName} is on the way to ${b.pickup.name}.',
         'driver_arrived' => '${d.driver.firstName} is at ${b.pickup.name}. Look for the ${d.vehicle.title} (${d.vehicle.plate}).',
         'in_progress' => 'On the way to ${b.drop.name}. Enjoy the ride!',
-        'completed' => 'Thanks for sharing the ride — you saved money and CO₂.',
+        'completed' => b.co2Kg != null && b.co2Kg! > 0
+            ? 'Thanks for sharing the ride — ${b.riderKm!.toStringAsFixed(1)} km shared saved about ${b.co2Kg!.toStringAsFixed(1)} kg of CO₂.'
+            : 'Thanks for sharing the ride — you saved money and CO₂.',
         'rejected' => 'The driver couldn’t take this request. Try another match.',
         'cancelled' => b.cancelReason ?? 'This booking was cancelled.',
         _ => '',

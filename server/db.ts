@@ -168,6 +168,8 @@ addColumn('bookings', 'fare_final', 'INTEGER NOT NULL DEFAULT 1')
 addColumn('bookings', 'paid_amount', 'INTEGER')
 addColumn('bookings', 'order_amount', 'INTEGER')
 addColumn('bookings', 'settle_due', 'INTEGER NOT NULL DEFAULT 0')
+// The km this rider travels (any fare mode), for the CO₂ estimate in server/co2.ts.
+addColumn('bookings', 'rider_km', 'REAL')
 addColumn('users', 'id_card', 'TEXT')
 addColumn('users', 'id_status', "TEXT NOT NULL DEFAULT 'none'")
 addColumn('users', 'id_note', 'TEXT')

@@ -52,6 +52,7 @@ import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
 import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, perSeatKmAuto, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { KM_PER_LITRE, PEOPLE, fuelPrice, perSeatKmFromPetrol, refreshFuelPrice } from './fuel'
+import { BOOKING_KM_SQL, co2SavedKg } from './co2'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -989,8 +990,8 @@ api.post(
     const km = riderKm(r, match.shareFraction)
     const quote = share ? quoteShare(r, km, query.seats) : null
     run(
-      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, fare_max, share_km, fare_final, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, fare_max, share_km, rider_km, fare_final, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?, ?, ?, ?, ?)`,
       id,
       r.id,
       meId(req),
@@ -1003,6 +1004,7 @@ api.post(
       newPin(),
       quote ? quote.max : null,
       share ? km : null,
+      km,
       share ? 0 : 1,
       now,
       now,
@@ -1817,7 +1819,7 @@ api.get(
         online: count(`SELECT COALESCE(SUM(fare), 0) n FROM bookings WHERE payment_status = 'paid_online'`),
         walletTopups: count(`SELECT COALESCE(SUM(amount), 0) n FROM wallet_tx WHERE kind = 'topup' AND status = 'done'`),
         refunds: count(`SELECT COUNT(*) n FROM bookings WHERE payment_status = 'refunded'`),
-        co2Kg: Math.round(count(`SELECT COALESCE(SUM(seats), 0) n FROM bookings WHERE status = 'completed'`) * 2.4),
+        co2Kg: Math.round(co2SavedKg(count(`SELECT COALESCE(SUM(b.seats * ${BOOKING_KM_SQL}), 0) n FROM bookings b JOIN rides r ON r.id = b.ride_id WHERE b.status = 'completed'`))),
       },
       eta: accuracy(),
       daily: days.map((d) => ({ day: d, offered: offered[d] ?? 0, booked: booked[d] ?? 0, completed: completed[d] ?? 0, cancelled: cancelled[d] ?? 0 })),

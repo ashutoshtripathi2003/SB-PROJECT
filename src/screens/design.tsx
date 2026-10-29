@@ -482,7 +482,7 @@ export function StatesGallery() {
             <LiveMini title="18 min to Malad" sub="Enjoy the ride. Your trip is being tracked." progress={30} green />
           </Frame>
           <Frame label="Ride completed">
-            <MiniHero mark={<SuccessMark />} title="You’ve arrived" body="Malad · ₹120 paid · ~2.4 kg CO₂ saved">
+            <MiniHero mark={<SuccessMark />} title="You’ve arrived" body="Malad · ₹120 paid · ~2.8 kg CO₂ saved">
               <div className="row gap-2">
                 {[1, 2, 3, 4, 5].map((n) => (
                   <span key={n} className="star-btn is-on" style={{ width: 36, height: 36 }}>

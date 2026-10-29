@@ -274,6 +274,10 @@ class Booking {
   final int? paidAmount;
   final int settleDue;
 
+  /// The km this rider travels, and the CO₂ saved by sharing them (server/co2.ts).
+  final double? riderKm;
+  final double? co2Kg;
+
   Booking.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         rideId = _s(j['rideId']),
@@ -282,6 +286,8 @@ class Booking {
         drop = Place.fromJson((j['drop'] as Map).cast<String, dynamic>()),
         seats = _i(j['seats']),
         fare = _i(j['fare']),
+        riderKm = j['riderKm'] == null ? null : _d(j['riderKm']),
+        co2Kg = j['co2Kg'] == null ? null : _d(j['co2Kg']),
         status = _s(j['status']),
         matchScore = _d(j['matchScore']),
         createdAt = _t(j['createdAt']),

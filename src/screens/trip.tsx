@@ -202,7 +202,7 @@ export function TripStatus() {
           />
         )
       case 'completed':
-        return <Hero mark={<div className="result-mark result-mark--brand"><Check /></div>} title="Trip completed" body={`Thanks for riding with ${name}. You saved about ${(2.4 * booking.seats).toFixed(1)} kg of CO₂.`} />
+        return <Hero mark={<div className="result-mark result-mark--brand"><Check /></div>} title="Trip completed" body={booking.co2Kg ? `Thanks for riding with ${name}. Sharing ${booking.riderKm} km saved about ${booking.co2Kg.toFixed(1)} kg of CO₂.` : `Thanks for riding with ${name}.`} />
       default:
         return null
     }
