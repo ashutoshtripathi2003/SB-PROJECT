@@ -1529,6 +1529,9 @@ api.get(
         ride: { ...ride, route: [] },
         other: publicUser(otherId),
         status: b.status,
+        role: b.riderId === meId(req) ? ('rider' as const) : ('driver' as const),
+        // Messages not read yet: the unread chat notifications for this conversation.
+        unread: Number(one<{ n: number }>(`SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND kind = 'chat' AND link = ? AND read = 0`, meId(req), `/chat/${b.id}`)?.n ?? 0),
         last: last ? { id: String(last.id), threadId: b.id, senderId: String(last.sender_id), text: String(last.text), createdAt: String(last.created_at), system: !!Number(last.system) } : undefined,
       }
     })

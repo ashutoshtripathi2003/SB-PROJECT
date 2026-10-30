@@ -275,7 +275,17 @@ export type TripItem = Booking & { ride: Ride; driver: PublicUser }
 export type OfferedItem = Ride & { pending: number; earned: number; riders: number }
 export type Trips = { bookings: TripItem[]; rides: OfferedItem[] }
 
-export type Thread = { bookingId: string; ride: Ride; other: PublicUser; last?: Message; status: BookingStatus }
+export type Thread = {
+  bookingId: string
+  ride: Ride
+  other: PublicUser
+  last?: Message
+  status: BookingStatus
+  /** Your side of this ride: you're its rider or its driver. */
+  role?: 'rider' | 'driver'
+  /** Messages from the other person you haven't read. */
+  unread?: number
+}
 
 export type PaymentRecord = {
   bookingId: string

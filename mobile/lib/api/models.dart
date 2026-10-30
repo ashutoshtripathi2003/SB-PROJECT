@@ -556,8 +556,14 @@ class Thread {
   final PublicUser other;
   final Message? last;
   final String status;
+
+  /// Your side of the ride ('rider' or 'driver'), and messages from the other person you haven't read.
+  final String role;
+  final int unread;
   Thread.fromJson(Map<String, dynamic> j)
       : bookingId = _s(j['bookingId']),
+        role = _ns(j['role']) ?? 'rider',
+        unread = _i(j['unread']),
         ride = Ride.fromJson((j['ride'] as Map).cast<String, dynamic>()),
         other = PublicUser.fromJson((j['other'] as Map).cast<String, dynamic>()),
         last = j['last'] is Map ? Message.fromJson((j['last'] as Map).cast<String, dynamic>()) : null,
