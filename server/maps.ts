@@ -38,11 +38,6 @@ export async function checkMapTiler(): Promise<'ok' | 'rejected' | 'unreachable'
   }
 }
 
-const CARTO_TILES = {
-  url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',
-  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>',
-}
-
 /**
  * `app`: the phone app asks, with `base` = this server's address as the app reached it.
  * CARTO and MapTiler only serve websites without a key ("API key required" on every tile for
@@ -52,14 +47,14 @@ export function mapsConfig({ app = false, base = '' } = {}) {
   const google = googleConfigured() && !env.google.routesOnly
   return {
     google: google && env.google.display && env.google.browserKey ? { browserKey: env.google.browserKey } : null,
-    tiles: app
+    // CARTO now answers "API key required" to keyless sites too, so without MapTiler the simple map also
+    // comes through RideSync (TomTom → MapTiler → OpenStreetMap, see basemap.ts).
+    tiles: app || !maptiler()
       ? { url: `${base}/api/tiles/{z}/{x}/{y}.png`, attribution: basemapAttribution() }
-      : maptiler()
-      ? {
+      : {
           url: `https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}{r}.png?key=${env.maptilerKey}`,
           attribution: '© <a href="https://www.maptiler.com/copyright/">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        }
-      : CARTO_TILES,
+        },
     // Sharp vector map with 3D buildings on the website.
     vectorStyle: maptiler() ? `https://api.maptiler.com/maps/streets-v2/style.json?key=${env.maptilerKey}` : 'https://tiles.openfreemap.org/styles/liberty',
     // Ola Maps' Indian map style first when there's an Ola key; the one above if it can't load.

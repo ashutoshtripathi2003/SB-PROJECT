@@ -160,8 +160,12 @@ select.input { appearance: none; cursor: pointer; }
 .input-wrap--quiet:hover { box-shadow: none; background: var(--surface-pressed); }
 
 /* OTP */
-.otp { display: flex; gap: var(--space-2); justify-content: space-between; }
+.otp { position: relative; display: flex; gap: var(--space-2); justify-content: space-between; }
+/* The real input lies over the boxes, invisible; 16px text stops iPhone Safari zooming in. */
+.otp__input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; font-size: 16px; color: transparent; caret-color: transparent; z-index: 1; }
 .otp__cell {
+  display: grid;
+  place-items: center;
   width: 100%;
   max-width: 52px;
   height: 60px;
@@ -174,7 +178,7 @@ select.input { appearance: none; cursor: pointer; }
   outline: none;
   transition: box-shadow var(--dur-fast);
 }
-.otp__cell:focus { box-shadow: inset 0 0 0 1.5px var(--border-focus), var(--ring-focus); }
+.otp__cell.is-active { box-shadow: inset 0 0 0 1.5px var(--border-focus), var(--ring-focus); }
 .otp.is-invalid .otp__cell { box-shadow: inset 0 0 0 1.5px var(--error-500); }
 
 /* Stepper (seat count) */
@@ -804,6 +808,10 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
 .overlay {
   position: fixed;
   inset: 0;
+  /* iPhone Safari keeps the page full height when the keyboard opens; ModalSheet sets these to the visible part. */
+  top: var(--vv-top, 0px);
+  height: var(--vv-height, 100%);
+  bottom: auto;
   z-index: var(--z-dialog);
   background: var(--scrim);
   display: flex;
@@ -1314,18 +1322,20 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
   font-variant-numeric: tabular-nums;
 }
 
-.pin-input { display: flex; gap: 12px; justify-content: center; }
-.pin-input input {
-  width: 60px; height: 68px; text-align: center;
+.pin-input { position: relative; display: flex; gap: 12px; justify-content: center; }
+/* The real input lies over the boxes, invisible; 16px+ text stops iPhone Safari zooming in. */
+.pin-input__field { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; font-size: 16px; color: transparent; caret-color: transparent; z-index: 1; }
+.pin-input__cell {
+  display: grid; place-items: center; width: 60px; height: 68px;
   font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums;
   border-radius: var(--radius-md); border: 2px solid var(--border-strong);
-  background: var(--surface); color: var(--ink-900); outline: none;
+  background: var(--surface); color: var(--ink-900);
   transition: border-color .15s, box-shadow .15s;
 }
-.pin-input input:focus { border-color: var(--primary-600); box-shadow: 0 0 0 4px var(--primary-100); }
-.pin-input.is-error input { border-color: var(--error-500); animation: pin-shake .35s; }
+.pin-input__cell.is-active { border-color: var(--primary-600); box-shadow: 0 0 0 4px var(--primary-100); }
+.pin-input.is-error .pin-input__cell { border-color: var(--error-500); animation: pin-shake .35s; }
 @keyframes pin-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-@media (prefers-reduced-motion: reduce) { .pin-input.is-error input { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pin-input.is-error .pin-input__cell { animation: none; } }
 
 .share-wa { background: #25d366; color: #fff; }
 .share-wa:hover { background: #1ebe5b; }

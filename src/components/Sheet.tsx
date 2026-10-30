@@ -131,8 +131,23 @@ export function ModalSheet({
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && dismissible && onClose()
     document.addEventListener('keydown', onKey)
     const t = setTimeout(() => panel.current?.querySelector<HTMLElement>('input, [data-autofocus], button:not([aria-label="Close"])')?.focus(), 60)
+    // Keep the sheet above the on-screen keyboard (iPhone Safari doesn't shrink the page for it).
+    const vv = window.visualViewport
+    const root = document.documentElement.style
+    const fit = () => {
+      if (!vv) return
+      root.setProperty('--vv-top', `${vv.offsetTop}px`)
+      root.setProperty('--vv-height', `${vv.height}px`)
+    }
+    fit()
+    vv?.addEventListener('resize', fit)
+    vv?.addEventListener('scroll', fit)
     return () => {
       document.removeEventListener('keydown', onKey)
+      vv?.removeEventListener('resize', fit)
+      vv?.removeEventListener('scroll', fit)
+      root.removeProperty('--vv-top')
+      root.removeProperty('--vv-height')
       clearTimeout(t)
       prev?.focus?.()
     }
