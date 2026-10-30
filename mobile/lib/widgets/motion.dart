@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import '../util/sound.dart';
 
 /// A soft moving highlight over grey placeholders while content loads.
 class Shimmer extends StatefulWidget {
@@ -125,8 +126,16 @@ Future<void> showSuccess(BuildContext context, String title, {String? subtitle})
 /// A moment for an action that matters (ride offered, request sent, ride accepted, started,
 /// completed, cancelled): animated graphic + title, as a bottom card. Closes by itself unless
 /// it has an action button.
-Future<void> showMoment(BuildContext context, Moment kind, String title, {String? subtitle, String? actionLabel, VoidCallback? onAction}) {
+Future<void> showMoment(BuildContext context, Moment kind, String title, {String? subtitle, String? actionLabel, VoidCallback? onAction, Sound? sound}) {
   final nav = Navigator.of(context);
+  // Each moment's sound (util/sound.dart); a moment can ask for another, e.g. a driver's new request.
+  Sounds.play(sound ??
+      switch (kind) {
+        Moment.done || Moment.accepted || Moment.completed => Sound.success,
+        Moment.published || Moment.sent => Sound.sent,
+        Moment.started => Sound.start,
+        Moment.cancelled || Moment.declined => Sound.cancel,
+      });
   var open = true;
   if (actionLabel == null) {
     Future.delayed(Duration(milliseconds: kind == Moment.sent ? 3200 : 2400), () {

@@ -10,6 +10,7 @@ import '../util/checkout.dart';
 import '../util/format.dart';
 import '../util/legal.dart';
 import '../util/validation.dart';
+import '../util/sound.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
 import '../widgets/photo_picker.dart';
@@ -660,21 +661,39 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   }
 }
 
-class NotificationSettingsScreen extends StatelessWidget {
+class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
+  @override
+  State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
+}
+
+class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
+  bool _sounds = Sounds.on;
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Notifications')),
-        body: ListView(padding: const EdgeInsets.all(20), children: const [
-          Notice('Notifications are on. You get instant alerts for requests, acceptances, arrivals and messages while RideSync is open.', tone: 'success', icon: Icons.notifications_active_outlined),
-          SizedBox(height: 16),
+        body: ListView(padding: const EdgeInsets.all(20), children: [
+          const Notice('Notifications are on. You get instant alerts for requests, acceptances, arrivals and messages while RideSync is open.', tone: 'success', icon: Icons.notifications_active_outlined),
+          const SizedBox(height: 16),
           Card(
             child: Column(children: [
-              ListTile(title: Text('Ride updates'), subtitle: Text('Requests, acceptances, arrivals, cancellations'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
-              Divider(indent: 16),
-              ListTile(title: Text('Messages'), subtitle: Text('Chat from drivers and riders'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
-              Divider(indent: 16),
-              ListTile(title: Text('Payments'), subtitle: Text('When a rider pays or a driver confirms'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const ListTile(title: Text('Ride updates'), subtitle: Text('Requests, acceptances, arrivals, cancellations'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              const ListTile(title: Text('Messages'), subtitle: Text('Chat from drivers and riders'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              const ListTile(title: Text('Payments'), subtitle: Text('When a rider pays or a driver confirms'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              SwitchListTile(
+                title: const Text('Sounds and vibration'),
+                subtitle: const Text('A chime when your seat is confirmed, a ring for new requests, a beep when your driver arrives'),
+                value: _sounds,
+                onChanged: (on) async {
+                  setState(() => _sounds = on);
+                  await Sounds.setOn(on);
+                  if (on) Sounds.play(Sound.success);
+                },
+              ),
             ]),
           ),
         ]),

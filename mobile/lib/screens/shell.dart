@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import '../util/sound.dart';
 import '../widgets/motion.dart';
 import 'assistant.dart';
 import 'find.dart';
@@ -72,12 +73,21 @@ class _HomeShellState extends State<HomeShell> {
     if (moment != null) {
       final link = n.link;
       showMoment(context, moment.$1, moment.$2,
+          sound: n.kind == 'request' ? Sound.request : null,
           subtitle: n.kind == 'cancelled' ? n.body : '${n.title}. ${n.body}',
           actionLabel: link == null && n.kind != 'rejected' ? null : moment.$3,
           onAction: () => n.kind == 'rejected' || link == null ? goTo(1) : openLink(context, link));
       _loadBadges();
       return;
     }
+    // A sound for the updates that matter; the banner says what happened.
+    final sound = switch (n.kind) {
+      'chat' || 'match' => Sound.message,
+      'arriving' => Sound.arrived,
+      'payment' => Sound.success,
+      _ => null,
+    };
+    if (sound != null) Sounds.play(sound);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(

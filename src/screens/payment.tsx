@@ -1,3 +1,4 @@
+import { play } from '@/lib/sound'
 import { isShareBooking, payNowAmount } from '@/lib/fare'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Banknote, CreditCard, Copy, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
@@ -74,6 +75,7 @@ export function Payment() {
     setError(null)
     try {
       await bookings.pay(booking.id, m, m === 'upi' ? ref.trim() || undefined : undefined)
+      play('success')
       setDone(m)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Couldn’t confirm. Try again.')
@@ -89,6 +91,7 @@ export function Payment() {
       const r = await openCheckout(await payOnline.createOrder(booking.id))
       if (!r) return
       await payOnline.verify(booking.id, r)
+      play('success')
       setDone('online')
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t start the payment.')

@@ -176,7 +176,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   top: false,
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Text(d!.booking.status == 'pending' ? 'Chat opens once the driver accepts.' : 'This ride has ended. Chat is closed.', style: const TextStyle(color: RS.ink500)),
+                    child: Text(d.booking.status == 'pending' ? 'Chat opens once the driver accepts.' : 'This ride has ended. Chat is closed.', style: const TextStyle(color: RS.ink500)),
                   ),
                 )
               else

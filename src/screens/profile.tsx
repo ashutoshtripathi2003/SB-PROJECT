@@ -28,13 +28,14 @@ import { ConfirmDialog, ModalSheet } from '@/components/Sheet'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { PhotoPicker } from '@/components/PhotoPicker'
-import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, VerifiedBadge } from '@/components/ui'
+import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { PREFERENCE_LABEL } from '@/lib/matching'
 import type { CommuteMode, Gender, RidePreference, TravelMode } from '@/lib/types'
 import { validatePhone, validateStudentId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
 import { ApiError, auth, deleteAccount, notificationPermission, removeVehicle, requestNotificationPermission, saveVehicle, updateMe, useMe } from '@/services/api'
 import { IdVerifyCard } from '@/components/Safety'
+import { play, setSoundsOn, soundsOn } from '@/lib/sound'
 import { PREF_OPTIONS } from './find'
 
 const TRAVEL_OPTIONS: { value: TravelMode; label: string }[] = [
@@ -382,6 +383,7 @@ function PaymentMethods() {
 
 function NotificationSettings() {
   const [perm, setPerm] = useState(notificationPermission())
+  const [sounds, setSounds] = useState(soundsOn())
   return (
     <Page title="Notifications" backTo="/profile" narrow>
       <div className="stack gap-6">
@@ -402,6 +404,21 @@ function NotificationSettings() {
         <div className="list">
           <ListRow title="Ride updates" subtitle="Requests, acceptances, arrivals, cancellations" trailing={<span className="t-sm t-muted">Always on</span>} />
           <ListRow title="Messages" subtitle="Chat from drivers and riders" trailing={<span className="t-sm t-muted">Always on</span>} />
+          <ListRow
+            title="Sounds and vibration"
+            subtitle="A chime when your seat is confirmed, a ring for new requests, a beep when your driver arrives"
+            trailing={
+              <Switch
+                checked={sounds}
+                label="Sounds and vibration"
+                onChange={(on) => {
+                  setSounds(on)
+                  setSoundsOn(on)
+                  if (on) play('success')
+                }}
+              />
+            }
+          />
         </div>
       </div>
     </Page>
