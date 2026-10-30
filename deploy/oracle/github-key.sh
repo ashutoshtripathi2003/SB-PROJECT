@@ -21,8 +21,8 @@ as chmod 700 "$HOME_DIR/.ssh"
 # only ever talks to the real GitHub.
 GH='github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl'
 as touch "$HOME_DIR/.ssh/known_hosts"
-grep -qF "$GH" "$HOME_DIR/.ssh/known_hosts" || echo "$GH" | as tee -a "$HOME_DIR/.ssh/known_hosts" >/dev/null
-if ! grep -q 'github_deploy' "$HOME_DIR/.ssh/config" 2>/dev/null; then
+as grep -qF "$GH" "$HOME_DIR/.ssh/known_hosts" || echo "$GH" | as tee -a "$HOME_DIR/.ssh/known_hosts" >/dev/null
+if ! as grep -q 'github_deploy' "$HOME_DIR/.ssh/config" 2>/dev/null; then
   printf 'Host github.com\n  IdentityFile %s\n  IdentitiesOnly yes\n' "$KEY" | as tee -a "$HOME_DIR/.ssh/config" >/dev/null
   as chmod 600 "$HOME_DIR/.ssh/config"
 fi
@@ -38,7 +38,7 @@ else
   echo
   echo "Add this key on GitHub (it's the PUBLIC half — safe to copy):"
   echo
-  cat "$KEY.pub"
+  as cat "$KEY.pub"
   echo
   echo "  1. Open https://github.com/${REPO_SSH#git@github.com:}" | sed 's/\.git$//'
   echo "  2. Settings → Deploy keys → Add deploy key"
