@@ -42,17 +42,19 @@ export function RidePinCard({ pin, plate }: { pin: string; plate?: string }) {
 
 /** Driver: type the rider's PIN to start their trip. */
 export function PinEntrySheet({ open, name, onClose, onVerify }: { open: boolean; name: string; onClose: () => void; onVerify: (pin: string) => Promise<unknown> }) {
-  const [digits, setDigits] = useState(['', '', '', ''])
+  // One real input with the 4 boxes drawn over it: iPhone Safari won't move focus between separate boxes,
+  // so typing into four inputs stopped after 2 digits there.
+  const [pin, setPin] = useState('')
+  const [focused, setFocused] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const refs = useRef<(HTMLInputElement | null)[]>([])
-  const pin = digits.join('')
+  const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!open) return
-    setDigits(['', '', '', ''])
+    setPin('')
     setError(null)
-    const t = setTimeout(() => refs.current[0]?.focus(), 120)
+    const t = setTimeout(() => input.current?.focus(), 120)
     return () => clearTimeout(t)
   }, [open])
 
@@ -64,28 +66,18 @@ export function PinEntrySheet({ open, name, onClose, onVerify }: { open: boolean
       await onVerify(code)
     } catch (e) {
       setError(errText(e, 'Couldn’t check the PIN.'))
-      setDigits(['', '', '', ''])
-      refs.current[0]?.focus()
+      setPin('')
+      input.current?.focus()
     } finally {
       setBusy(false)
     }
   }
 
-  function type(i: number, raw: string) {
-    const v = raw.replace(/\D/g, '')
-    if (v.length > 1) {
-      // Pasted the whole PIN
-      const all = v.slice(0, 4).split('')
-      const next = [0, 1, 2, 3].map((k) => all[k] ?? '')
-      setDigits(next)
-      if (all.length === 4) void verify(next.join(''))
-      return
-    }
-    const next = [...digits]
-    next[i] = v
-    setDigits(next)
-    if (v && i < 3) refs.current[i + 1]?.focus()
-    if (v && i === 3 && next.every(Boolean)) void verify(next.join(''))
+  function type(raw: string) {
+    const v = raw.replace(/\D/g, '').slice(0, 4)
+    setPin(v)
+    setError(null)
+    if (v.length === 4) void verify(v)
   }
 
   return (
@@ -101,24 +93,27 @@ export function PinEntrySheet({ open, name, onClose, onVerify }: { open: boolean
     >
       <div className="stack gap-4">
         <p className="t-body t-secondary">Ask {name} for the 4-digit PIN on their screen. It confirms they’re getting into the right car.</p>
-        <div className={`pin-input${error ? ' is-error' : ''}`}>
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                refs.current[i] = el
-              }}
-              value={d}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={4}
-              aria-label={`PIN digit ${i + 1}`}
-              onChange={(e) => type(i, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Backspace' && !digits[i] && i > 0) refs.current[i - 1]?.focus()
-                if (e.key === 'Enter') void verify()
-              }}
-            />
+        <div className={`pin-input${error ? ' is-error' : ''}`} onClick={() => input.current?.focus()}>
+          <input
+            ref={input}
+            className="pin-input__field"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="off"
+            maxLength={4}
+            value={pin}
+            aria-label={`${name}’s 4-digit ride PIN`}
+            disabled={busy}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onChange={(e) => type(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void verify()}
+          />
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} aria-hidden className={`pin-input__cell${focused && i === Math.min(pin.length, 3) ? ' is-active' : ''}`}>
+              {pin[i] ?? ''}
+            </span>
           ))}
         </div>
         {error && <Notice tone="error">{error}</Notice>}
