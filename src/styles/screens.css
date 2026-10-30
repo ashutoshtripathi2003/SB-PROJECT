@@ -412,3 +412,24 @@ button.choice:active { transform: scale(0.99); }
 @keyframes step-pulse { 0%, 100% { box-shadow: inset 0 0 0 6px var(--primary-600), 0 0 0 0 rgb(80 56 230 / 0.35); } 50% { box-shadow: inset 0 0 0 6px var(--primary-600), 0 0 0 6px rgb(80 56 230 / 0); } }
 @media (prefers-reduced-motion: reduce) { .steps__item.is-current .steps__dot { animation: none; } }
 .pay-head { display: flex; flex-direction: column; }
+
+/* Home (Uber / Rapido style): one "Where to?" bar and one-tap place shortcuts */
+.where-to { display: flex; align-items: center; gap: 12px; width: 100%; height: 56px; padding: 0 8px 0 18px; border-radius: var(--radius-full); background: var(--surface-sunken); text-align: left; transition: background-color var(--dur-fast), transform var(--dur-instant); }
+.where-to:hover { background: var(--surface-hover); }
+.where-to:active { transform: scale(0.99); }
+.where-to > svg { width: 22px; height: 22px; color: var(--ink-900); flex: none; }
+.where-to__text { flex: 1; font-size: 18px; font-weight: 700; color: var(--ink-900); }
+.where-to__when { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px; border-radius: var(--radius-full); background: var(--surface); font-size: 14px; font-weight: 600; color: var(--ink-900); box-shadow: var(--shadow-sm); }
+.shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 560px) { .shortcuts { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.shortcut { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); text-align: left; min-width: 0; transition: background-color var(--dur-fast); }
+.shortcut:hover { background: var(--surface-hover); }
+.shortcut__icon { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-sunken); color: var(--ink-700, var(--ink-500)); flex: none; }
+
+/* My Rides: each ride as a card */
+.timeline { gap: 8px; }
+.timeline > div { display: flex; flex-direction: column; gap: 8px; }
+.timeline .timeline__item { border-bottom: 0; padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); transition: background-color var(--dur-fast), box-shadow var(--dur-fast); }
+.timeline .timeline__item:hover { box-shadow: inset 0 0 0 1px var(--primary-200); }
+.timeline .timeline__date { width: 44px; padding: 6px 0; border-radius: 12px; background: var(--primary-50); }
+.timeline .timeline__day { color: var(--primary-700); }

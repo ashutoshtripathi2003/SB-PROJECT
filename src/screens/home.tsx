@@ -1,14 +1,13 @@
-import { ArrowRight, Bell, CarFront, ChevronRight, Search } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowRight, Bell, Bot, CarFront, ChevronRight, Clock, MapPin, Search } from 'lucide-react'
+
 import { Link, useNavigate } from 'react-router-dom'
 import { InstallHint } from '@/components/InstallHint'
 import { Logo } from '@/components/Logo'
 import { MapView, type MapRoute } from '@/components/MapView'
-import { TripForm, validateTrip, type TripDraft } from '@/components/TripForm'
 import { Avatar, Badge, Button, Rating, Skeleton } from '@/components/ui'
-import { CAMPUS } from '@/data/places'
+import { CAMPUS, placeById } from '@/data/places'
 import { dayTime, firstName, money, time } from '@/lib/format'
-import type { OfferedItem, SearchQuery, TripItem } from '@/lib/types'
+import type { OfferedItem, Place, SearchQuery, TripItem } from '@/lib/types'
 import { MAX_SEATS } from '@/lib/validation'
 import { MapScreen, useMapPadding } from '@/layouts/MapScreen'
 import { LIVE_STATUSES, Q, useMe, useQuery, type Badges, type FeedItem, type Trips } from '@/services/api'
@@ -16,6 +15,8 @@ import { defaultQuery, useSearch } from '@/state/search'
 import { BOOKING_STATUS } from './trip'
 
 const ACTIVE = ['pending', 'accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress']
+/** Where VIT students go most: tap one to see rides right away. */
+const SHORTCUTS = ['thane', 'dadar', 'kurla', 'ghatkopar', 'vashi', 'andheri']
 
 export function Home() {
   const { user } = useMe()
@@ -28,9 +29,6 @@ export function Home() {
   const canDrive = u.commute !== 'rider'
   // Drivers-only start in "offer"; everyone else finds a ride, with "Offer a ride" one tap away.
   const mode: 'find' | 'offer' = u.commute === 'driver' ? 'offer' : 'find'
-  const base = search.query ?? defaultQuery(CAMPUS)
-  const [draft, setDraft] = useState<TripDraft>({ pickup: base.pickup, drop: search.query ? base.drop : null, date: base.date, time: base.time, seats: base.seats })
-  const [errors, setErrors] = useState<ReturnType<typeof validateTrip>>({})
   const padding = useMapPadding(0.6)
 
   const booking = trips.data?.bookings
@@ -42,15 +40,19 @@ export function Home() {
   const routes: MapRoute[] = soon.slice(0, 5).map((f) => ({ id: f.ride.id, coords: f.ride.route, kind: 'alt' }))
   const fit = [CAMPUS, ...soon.slice(0, 5).flatMap((f) => [f.ride.origin, f.ride.destination])]
 
-  function submit(as: 'find' | 'offer' = mode) {
-    const errs = validateTrip(draft)
-    setErrors(errs)
-    if (Object.values(errs).some(Boolean)) return
-    if (as === 'offer') {
-      nav('/offer', { state: { draft } })
-      return
+  // Mornings: rides to campus; afternoons and evenings: rides home from campus.
+  const toCampus = new Date().getHours() < 12
+  function quick(p: Place) {
+    const now = defaultQuery(CAMPUS)
+    const q: SearchQuery = {
+      pickup: toCampus ? p : CAMPUS,
+      drop: toCampus ? CAMPUS : p,
+      date: now.date,
+      time: now.time,
+      seats: 1,
+      preferences: search.query?.preferences ?? u.preferences.filter((x) => x !== 'music_ok' && x !== 'ac'),
     }
-    const q: SearchQuery = { pickup: draft.pickup!, drop: draft.drop!, date: draft.date, time: draft.time, seats: draft.seats, preferences: search.query?.preferences ?? u.preferences.filter((p) => p !== 'music_ok' && p !== 'ac') }
+    if (mode === 'offer') return nav('/offer', { state: { draft: { pickup: q.pickup, drop: q.drop, date: q.date, time: q.time, seats: Math.min(u.vehicle?.seats ?? 3, MAX_SEATS) } } })
     void search.run(q)
     nav('/find/results')
   }
@@ -67,10 +69,15 @@ export function Home() {
           <span className="map-chip">
             <Logo height={22} />
           </span>
+          <span className="row gap-2">
+          <button type="button" aria-label="Ask the RideSync assistant" className="icon-btn icon-btn--surface" onClick={() => window.dispatchEvent(new Event('ridesync:assistant'))}>
+            <Bot />
+          </button>
           <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} className="icon-btn icon-btn--surface" style={{ position: 'relative' }}>
             <Bell />
             {unread > 0 && <span className="dot-badge" />}
           </Link>
+          </span>
         </div>
       }
       header={
@@ -83,18 +90,36 @@ export function Home() {
       }
     >
       <div className="stack gap-4">
-        <InstallHint />
-        <TripForm value={draft} onChange={(v) => { setDraft(v); setErrors({}) }} errors={errors} seatsLabel={mode === 'offer' ? 'Seats offered' : 'Seats'} maxSeats={mode === 'offer' ? Math.min(u.vehicle?.seats ?? 4, MAX_SEATS) : MAX_SEATS} />
-        <div className="stack gap-2">
-          <Button size="lg" block onClick={() => submit()} icon={mode === 'offer' ? <CarFront /> : <Search />}>
-            {mode === 'offer' ? 'Offer a ride' : 'Find a ride'}
-          </Button>
-          {u.commute === 'both' && (
-            <Button size="lg" block variant="secondary" icon={<CarFront />} onClick={() => submit('offer')}>
-              Offer a ride instead
-            </Button>
-          )}
+        <button type="button" className="where-to" onClick={() => nav(mode === 'offer' ? '/offer' : '/find')}>
+          <Search />
+          <span className="where-to__text">{mode === 'offer' ? 'Where are you driving?' : 'Where to?'}</span>
+          <span className="where-to__when">
+            <Clock size={14} /> Now
+          </span>
+        </button>
+        <div className="shortcuts" aria-label={toCampus ? 'Quick rides to campus' : 'Quick rides from campus'}>
+          {SHORTCUTS.map((id) => {
+            const p = placeById(id)!
+            return (
+              <button key={id} type="button" className="shortcut" onClick={() => quick(p)}>
+                <span className="shortcut__icon">
+                  <MapPin size={16} />
+                </span>
+                <span className="stack" style={{ minWidth: 0, alignItems: 'flex-start' }}>
+                  <span className="t-sm t-strong truncate">{toCampus ? p.name : p.name}</span>
+                  <span className="t-caption t-muted" style={{ fontWeight: 400 }}>
+                    {toCampus ? `→ ${CAMPUS.name}` : `from ${CAMPUS.name}`}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
         </div>
+        {u.commute === 'both' && (
+          <Button size="lg" block variant="secondary" icon={<CarFront />} onClick={() => nav('/offer')}>
+            Offer a ride instead
+          </Button>
+        )}
 
         {(booking || offered) && (
           <section className="stack gap-2" style={{ marginTop: 8 }}>
@@ -128,6 +153,7 @@ export function Home() {
             soon.map((f) => <FeedRow key={f.ride.id} item={f} />)
           )}
         </section>
+        <InstallHint />
       </div>
     </MapScreen>
   )
