@@ -22,7 +22,7 @@ describe('MapTiler key check', () => {
     globalThis.fetch = vi.fn(async () => new Response('Invalid key', { status: 403 })) as typeof fetch
     expect(await maps.checkMapTiler()).toBe('rejected')
     const cfg = maps.mapsConfig()
-    expect(cfg.tiles.url).toContain('cartocdn.com')
+    expect(cfg.tiles.url).toBe('/api/tiles/{z}/{x}/{y}.png')
     expect(cfg.search).toBe('openstreetmap')
   })
 })

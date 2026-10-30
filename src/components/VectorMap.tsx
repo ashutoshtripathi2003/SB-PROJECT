@@ -100,7 +100,7 @@ export default function VectorMap({
       return onFail()
     }
     // A style that never loads (bad key, offline) → fall back to the simple map.
-    const t = window.setTimeout(() => !loaded && onFail(), 6_000)
+    const t = window.setTimeout(() => !loaded && onFail(), 15_000)
     // Also give up if the map's own tiles keep failing right after it opens (e.g. a rejected key).
     let tileErrors = 0
     const opened = Date.now()

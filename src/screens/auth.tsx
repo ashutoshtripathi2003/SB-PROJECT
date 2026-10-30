@@ -356,18 +356,21 @@ export function Login() {
 
 function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: boolean, onboarded: boolean) => void; onResend: () => Promise<unknown> }) {
   const inTerminal = useConfig().data?.codesInTerminal
-  const [digits, setDigits] = useState<string[]>(Array(6).fill(''))
+  // One real input (6 boxes are drawn over it): iPhone Safari won't move focus between separate boxes,
+  // and its "From Messages/Mail" code autofill fills a single field.
+  const [code, setCode] = useState('')
+  const [focused, setFocused] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [cooldown, setCooldown] = useState(45)
   const [resent, setResent] = useState(false)
-  const refs = useRef<(HTMLInputElement | null)[]>([])
+  const input = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const t = setInterval(() => setCooldown((c) => Math.max(0, c - 1)), 1000)
     return () => clearInterval(t)
   }, [])
-  useEffect(() => refs.current[0]?.focus(), [])
+  useEffect(() => input.current?.focus(), [])
 
   async function submit(code: string) {
     setLoading(true)
@@ -377,28 +380,18 @@ function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: 
       onDone(r.isNew, r.user.onboarded)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Something went wrong.')
-      setDigits(Array(6).fill(''))
-      setTimeout(() => refs.current[0]?.focus(), 0)
+      setCode('')
+      setTimeout(() => input.current?.focus(), 0)
     } finally {
       setLoading(false)
     }
   }
 
-  function setAt(i: number, v: string) {
-    const clean = v.replace(/\D/g, '')
-    if (clean.length > 1) {
-      const next = clean.slice(0, 6).split('')
-      setDigits([...next, ...Array(6 - next.length).fill('')])
-      refs.current[Math.min(5, next.length)]?.focus()
-      if (next.length === 6) void submit(next.join(''))
-      return
-    }
-    const next = [...digits]
-    next[i] = clean
-    setDigits(next)
+  function change(v: string) {
+    const clean = v.replace(/\D/g, '').slice(0, 6)
+    setCode(clean)
     setError(null)
-    if (clean && i < 5) refs.current[i + 1]?.focus()
-    if (next.every(Boolean)) void submit(next.join(''))
+    if (clean.length === 6) void submit(clean)
   }
 
   return (
@@ -421,25 +414,26 @@ function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: 
         </div>
       )}
       <div className="stack gap-4">
-        <div className={cx('otp', error && 'is-invalid')} role="group" aria-label="Login code">
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                refs.current[i] = el
-              }}
-              className="otp__cell"
-              inputMode="numeric"
-              autoComplete={i === 0 ? 'one-time-code' : 'off'}
-              maxLength={6}
-              value={d}
-              aria-label={`Digit ${i + 1}`}
-              disabled={loading}
-              onChange={(e) => setAt(i, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Backspace' && !digits[i] && i > 0) refs.current[i - 1]?.focus()
-              }}
-            />
+        <div className={cx('otp', error && 'is-invalid')} onClick={() => input.current?.focus()}>
+          <input
+            ref={input}
+            className="otp__input"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            autoComplete="one-time-code"
+            maxLength={6}
+            value={code}
+            aria-label="6-digit login code"
+            disabled={loading}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onChange={(e) => change(e.target.value)}
+          />
+          {Array.from({ length: 6 }, (_, i) => (
+            <span key={i} aria-hidden className={cx('otp__cell', focused && i === Math.min(code.length, 5) && 'is-active')}>
+              {code[i] ?? ''}
+            </span>
           ))}
         </div>
         {error && (
@@ -447,7 +441,7 @@ function CodeStep({ email, onDone, onResend }: { email: string; onDone: (isNew: 
             {error}
           </p>
         )}
-        <Button size="lg" block loading={loading} disabled={digits.some((d) => !d)} onClick={() => submit(digits.join(''))}>
+        <Button size="lg" block loading={loading} disabled={code.length < 6} onClick={() => submit(code)}>
           Verify and continue
         </Button>
         <Button
