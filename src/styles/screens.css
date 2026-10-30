@@ -381,3 +381,34 @@ button.choice:active { transform: scale(0.99); }
 .legal__main ul { padding-left: 1.25rem; display: flex; flex-direction: column; gap: var(--space-2); margin: 0; }
 .legal__main a { color: var(--primary-600); }
 .legal__switch { margin-top: var(--space-8); }
+
+/* Booking flow (Uber / Rapido style): status header, progress, driver card, PIN, price */
+.booking { display: flex; flex-direction: column; gap: var(--space-3); padding-bottom: var(--space-6); }
+.booking-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-2); padding: var(--space-2) 0 var(--space-3); }
+.booking-head p { max-width: 340px; }
+.booking-head .result-mark { width: 72px; height: 72px; }
+.booking-head .result-mark svg { width: 36px; height: 36px; }
+.radar--sm { width: 104px; height: 104px; }
+.card-lite { background: var(--surface); border-radius: var(--radius-xl, 20px); box-shadow: inset 0 0 0 1px var(--border); padding: var(--space-4); }
+.driver-card { display: flex; flex-direction: column; gap: var(--space-3); }
+.driver-card .vehicle-row { margin: 0; }
+.round-action { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-50); color: var(--primary-600); transition: transform var(--dur-instant), background-color var(--dur-fast); }
+.round-action:active { transform: scale(0.94); }
+.round-action svg { width: 20px; height: 20px; }
+.round-action--call { background: var(--success-50); color: var(--success-600); }
+.price-card__amount { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; color: var(--ink-900); line-height: 1.1; }
+.link-quiet { font-weight: 600; color: var(--primary-600); padding: 10px; text-align: center; }
+.link-quiet--danger { color: var(--error-600); }
+
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); list-style: none; margin: 0; padding: var(--space-3) var(--space-2); background: var(--surface); border-radius: var(--radius-xl, 20px); box-shadow: inset 0 0 0 1px var(--border); }
+.steps__item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.steps__item:not(:last-child)::after { content: ''; position: absolute; top: 10px; left: calc(50% + 14px); right: calc(-50% + 14px); height: 2px; background: var(--border); border-radius: 2px; }
+.steps__item.is-done:not(:last-child)::after { background: var(--primary-600); }
+.steps__dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-sunken); box-shadow: inset 0 0 0 2px var(--border); color: #fff; z-index: 1; }
+.steps__item.is-done .steps__dot { background: var(--primary-600); box-shadow: none; }
+.steps__item.is-current .steps__dot { background: var(--surface); box-shadow: inset 0 0 0 6px var(--primary-600); animation: step-pulse 1.8s var(--ease-standard) infinite; }
+.steps__label { font-size: 11.5px; font-weight: 600; color: var(--ink-400); line-height: 1.2; }
+.steps__item.is-done .steps__label, .steps__item.is-current .steps__label { color: var(--ink-900); }
+@keyframes step-pulse { 0%, 100% { box-shadow: inset 0 0 0 6px var(--primary-600), 0 0 0 0 rgb(80 56 230 / 0.35); } 50% { box-shadow: inset 0 0 0 6px var(--primary-600), 0 0 0 6px rgb(80 56 230 / 0); } }
+@media (prefers-reduced-motion: reduce) { .steps__item.is-current .steps__dot { animation: none; } }
+.pay-head { display: flex; flex-direction: column; }
