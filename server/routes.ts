@@ -51,7 +51,7 @@ import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
 import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, meterFares, perPersonIfFull, perSeatKmAuto, rateFor, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
-import { FUELS, FUEL_TYPES, KM_PER_LITRE, PEOPLE, PRICE_RANGE, fuelCost, fuelPrice, ownMileage, perSeatKmFromPetrol, refreshFuelPrice, setFuelPrices } from './fuel'
+import { FUELS, FUEL_TYPES, KM_PER_LITRE, PEOPLE, PRICE_RANGE, fuelCost, fuelPrice, perSeatKmFromPetrol, refreshFuelPrice, setFuelPrices } from './fuel'
 import { BOOKING_CO2_SQL, TRAVEL_MODES, bookingCo2Kg, type TravelMode } from './co2'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
@@ -295,21 +295,19 @@ api.put(
         plate: z.string().trim().max(20),
         seats: z.number().int().min(1).max(MAX_SEATS),
         fuel: z.enum(['petrol', 'diesel', 'cng', 'ev']),
-        // The car's own km per litre (kg, kWh) in city traffic; null clears it. (Older apps sent other shapes: ignored.)
+        // Car size: sets how much fuel it burns at a given traffic speed. Older apps don't send it (kept as it was).
+        body: z.enum(['hatchback', 'sedan', 'suv']).optional(),
+        // Sent by older apps (fares no longer use a mileage figure); ignored.
         mileage: z.unknown().optional(),
       }),
       req.body,
     )
     const err = validatePlate(v.plate)
     if (err) throw new HttpError(400, err, 'plate')
-    const range = FUELS[v.fuel].mileage
-    if (typeof v.mileage === 'number' && ownMileage(v.fuel, v.mileage) == null)
-      throw new HttpError(400, `Enter your car's mileage between ${range.min} and ${range.max} km per ${FUELS[v.fuel].unit}, or leave it empty.`, 'mileage')
     const existing = vehicleFor(meId(req))
     if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, meId(req))
     else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel)
-    // A number sets the car's own mileage, null clears it; anything else (or nothing) leaves it as it was.
-    if (typeof v.mileage === 'number' || v.mileage === null) run(`UPDATE vehicles SET mileage_city = ? WHERE user_id = ?`, v.mileage === null ? null : ownMileage(v.fuel, v.mileage)!, meId(req))
+    if (v.body) run(`UPDATE vehicles SET body = ? WHERE user_id = ?`, v.body, meId(req))
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),

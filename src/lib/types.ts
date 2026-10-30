@@ -29,8 +29,8 @@ export type Vehicle = {
   plate: string
   seats: number // passenger seats excluding driver
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
-  /** The driver's own km per litre (kg for CNG, kWh for electric) in city traffic, if they gave it. */
-  mileage?: number
+  /** Car size: decides how much fuel it burns at a given traffic speed (src/lib/fuel.ts). */
+  body?: 'hatchback' | 'sedan' | 'suv'
 }
 
 /** What other students can see about you. */

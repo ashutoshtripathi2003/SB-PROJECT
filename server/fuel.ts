@@ -1,32 +1,20 @@
-import { FUEL_SPECS } from '../src/lib/fuel'
+import { FUEL_SPECS, TYPICAL_KMH, jamPerHour, per100, type CarType } from '../src/lib/fuel'
 import { db, one, run } from './db'
 
 /**
- * Fuel: what each kind of car costs to run and how much CO₂ it gives off, with real Mumbai prices.
- *
- *   ₹ per km per seat = fuel price ÷ the car's km per litre (kg, kWh) in city traffic ÷ 4 people (driver + 3 riders)
+ * Fuel: today's price of each fuel in Mumbai, and what a km costs and gives off in a given car.
  *
  * Petrol and diesel prices are read automatically from public fuel-price pages (Mumbai) at start-up and every
  * 6 hours; CNG and electricity change rarely, so the admin sets them. The last good readings are kept in
- * `settings` (key `fuel_price`). The km per unit is the driver's own figure when they give one, else the typical
- * city-traffic figure (src/lib/fuel.ts; well under brochure mileage: Mumbai traffic is stop-and-go).
+ * `settings` (key `fuel_price`). How much fuel a trip uses comes from the traffic speed, not a mileage figure
+ * (src/lib/fuel.ts and server/fare.ts).
  */
 
 export type FuelType = 'petrol' | 'diesel' | 'cng' | 'ev'
 
-export type FuelInfo = {
-  label: string
-  unit: 'litre' | 'kg' | 'kWh'
+export type FuelInfo = (typeof FUEL_SPECS)[FuelType] & {
   /** Built-in ₹ per unit, used until the first reading (petrol, diesel) or until the admin sets one. */
   price: number
-  /** Typical km per unit in Mumbai city traffic. */
-  kmPerUnit: number
-  /** Units burned per hour standing in a jam (engine idling, AC on). */
-  idlePerHour: number
-  /** kg of CO₂ from one unit (for EVs, from the electricity grid that charges it). */
-  co2PerUnit: number
-  /** Believable km per unit a driver may enter. */
-  mileage: { min: number; max: number }
   /** True when the price is read from fuel-price pages; false when the admin sets it. */
   auto: boolean
 }
@@ -42,8 +30,8 @@ export const FUELS: Record<FuelType, FuelInfo> = {
 }
 export const FUEL_TYPES = Object.keys(FUELS) as FuelType[]
 
-/** Petrol km per litre in city traffic (kept for older callers). */
-export const KM_PER_LITRE = FUELS.petrol.kmPerUnit
+/** A petrol hatchback's km per litre at a typical Mumbai speed (for the FARE_MODE=seat rate and older callers). */
+export const KM_PER_LITRE = Math.round((100 / per100('petrol')) * 10) / 10
 /** Driver + 3 riders. */
 export const PEOPLE = 4
 /** Petrol/diesel readings outside this range are treated as a page-reading mistake. */
@@ -96,21 +84,13 @@ const round05 = (n: number) => Math.round(n * 20) / 20
 /** ₹ per km per seat for a fuel price and km per unit, to the nearest 5 paise. */
 export const perSeatKmFor = (price: number, kmPerUnit: number) => round05(price / kmPerUnit / PEOPLE)
 
-/** ₹ per km per seat for a petrol price in a typical car: ₹111.21 ÷ 10 km/L ÷ 4 → ₹2.80. */
+/** ₹ per km per seat for a petrol price in a typical car (FARE_MODE=seat). */
 export const perSeatKmFromPetrol = (petrol: number) => perSeatKmFor(petrol, KM_PER_LITRE)
 
-/** The driver's own km per unit if it is believable for that fuel, else undefined. */
-export function ownMileage(fuel: FuelType, mileage: unknown): number | undefined {
-  const n = typeof mileage === 'number' ? mileage : null
-  const r = FUELS[fuel].mileage
-  return n != null && Number.isFinite(n) && n >= r.min && n <= r.max ? Math.round(n * 10) / 10 : undefined
-}
-
-/** What one km in this car costs and gives off: the numbers behind a fare and a CO₂ figure. */
-export function fuelCost(fuel: FuelType = 'petrol', mileage?: number) {
+/** What a km costs and gives off in this car at a typical Mumbai speed (for CO₂ and the admin's table). */
+export function fuelCost(fuel: FuelType = 'petrol', body: CarType = 'hatchback') {
   const info = FUELS[fuel] ?? FUELS.petrol
-  const own = ownMileage(fuel, mileage)
-  const kmPerUnit = own ?? info.kmPerUnit
+  const kmPerUnit = Math.round((100 / per100(fuel, body, TYPICAL_KMH)) * 10) / 10
   const price = fuelPrice()[fuel] ?? info.price
   return {
     fuel,
@@ -118,9 +98,8 @@ export function fuelCost(fuel: FuelType = 'petrol', mileage?: number) {
     unit: info.unit,
     price,
     kmPerUnit,
-    ownMileage: own != null,
+    jamPerHour: Math.round(jamPerHour(fuel, body) * 100) / 100,
     people: PEOPLE,
-    idlePerHour: info.idlePerHour,
     perSeatKm: perSeatKmFor(price, kmPerUnit),
     co2KgPerKm: Math.round((info.co2PerUnit / kmPerUnit) * 1000) / 1000,
   }

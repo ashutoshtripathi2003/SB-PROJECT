@@ -24,8 +24,8 @@ describe('seat price (BlaBlaCar-style)', () => {
     expect(fare.seatPrice(100, 2)).toEqual({ suggested: 200, min: 100, max: 300, perSeatKm: 2 })
     // Short trips never go below ₹30 a seat.
     expect(fare.seatPrice(4, 2)).toEqual({ suggested: 30, min: 30, max: 45, perSeatKm: 2 })
-    // By default the rate follows the petrol price: ₹111.21 ÷ 10 km/L (city traffic) ÷ 4 people = ₹2.80.
-    expect(fare.seatPrice(25)).toEqual({ suggested: 70, min: 35, max: 105, perSeatKm: 2.8 })
+    // By default the rate follows the petrol price: ₹111.21 ÷ 11.8 km/L (a hatchback at Mumbai speed) ÷ 4 people = ₹2.35.
+    expect(fare.seatPrice(25)).toEqual({ suggested: 60, min: 30, max: 90, perSeatKm: 2.35 })
     // The admin's rate is used.
     expect(fare.seatPrice(25, 3).suggested).toBe(75)
   })
@@ -53,7 +53,7 @@ describe('offering and booking at a fixed seat price', () => {
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
     expect(preview.mode).toBe('seat')
     expect(preview.seat).toMatchObject(fare.seatPrice(preview.distanceKm))
-    expect(preview.seat.rate).toMatchObject({ fuel: 'petrol', price: 111.21, kmPerUnit: 10, ownMileage: false, perSeatKm: 2.8 })
+    expect(preview.seat.rate).toMatchObject({ fuel: 'petrol', price: 111.21, kmPerUnit: 11.8, perSeatKm: 2.35 })
 
     // Below the range is brought up to its lowest price; a price inside the range is kept as chosen.
     const low = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 5, maxDetourKm: 3, preferences: [] })).body
@@ -84,23 +84,21 @@ describe('offering and booking at a fixed seat price', () => {
   })
 })
 
-describe("the car's fuel and real mileage, and the rider's old way of travelling", () => {
-  it("prices from the driver's own mileage and counts CO₂ only for trips that replace a car or cab", async () => {
+describe("the car's fuel and size, and the rider's old way of travelling", () => {
+  it('prices from the car type and counts CO₂ only for trips that replace a car or cab', async () => {
     const driver = await student('fuel.driver@vit.edu.in')
     const car = { make: 'Maruti', model: 'Dzire', color: 'Grey', plate: 'MH01AB7777', seats: 3 }
-    // Unbelievable mileage is refused; a real one is kept and used.
-    expect((await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'petrol', mileage: 80 })).status).toBe(400)
-    const me = (await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'petrol', mileage: 6 })).body
-    expect(me.vehicle).toMatchObject({ fuel: 'petrol', mileage: 6 })
+    expect((await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'petrol', body: 'truck' })).status).toBe(400)
+    const me = (await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'petrol', body: 'sedan' })).body
+    expect(me.vehicle).toMatchObject({ fuel: 'petrol', body: 'sedan' })
     const departAt = new Date(Date.now() + 4 * 3600_000).toISOString()
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
-    expect(preview.seat.rate).toMatchObject({ fuel: 'petrol', kmPerUnit: 6, ownMileage: true, perSeatKm: 4.65 })
-    expect(preview.seat.perSeatKm).toBe(4.65)
-    // Saving without the field keeps it; null clears it. A CNG car is priced from CNG.
-    expect((await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'petrol' })).body.vehicle.mileage).toBe(6)
-    expect((await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'cng', mileage: null })).body.vehicle.mileage).toBeUndefined()
+    expect(preview.seat.rate).toMatchObject({ fuel: 'petrol', kmPerUnit: 9.4, perSeatKm: 2.95 })
+    // Saving without the car type keeps it; a CNG car is priced from CNG.
+    expect((await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'cng' })).body.vehicle.body).toBe('sedan')
+    await driver.put('/api/me/vehicle').set(H).send({ ...car, fuel: 'cng', body: 'hatchback' })
     const cng = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
-    expect(cng.seat.rate).toMatchObject({ fuel: 'cng', unit: 'kg', kmPerUnit: 15, perSeatKm: 1.3 })
+    expect(cng.seat.rate).toMatchObject({ fuel: 'cng', unit: 'kg', kmPerUnit: 15.9, perSeatKm: 1.2 })
 
     const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [] })).body
     expect(ride.farePerSeat).toBe(cng.seat.suggested)
@@ -111,7 +109,7 @@ describe("the car's fuel and real mileage, and the rider's old way of travelling
     expect((await cab.patch('/api/me').set(H).send({ usualMode: 'cab' })).body.usualMode).toBe('cab')
     const bc = (await cab.post('/api/bookings').set(H).send({ rideId: ride.id, query: q })).body
     expect(bc.riderKm).toBeGreaterThan(10)
-    expect(bc.co2Kg).toBeCloseTo(bc.riderKm * 0.231, 0)
+    expect(bc.co2Kg).toBeCloseTo(bc.riderKm * 0.196, 0)
     const train = await student('fuel.train@vit.edu.in')
     await train.patch('/api/me').set(H).send({ usualMode: 'train' })
     expect((await train.post('/api/bookings').set(H).send({ rideId: ride.id, query: q })).body.co2Kg).toBe(0)

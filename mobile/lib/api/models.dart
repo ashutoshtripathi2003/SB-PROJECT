@@ -57,9 +57,9 @@ class Vehicle {
   final int seats;
   final String fuel;
 
-  /// The car's own km per litre (kg for CNG, kWh for electric) in city traffic, if the driver gave it.
-  final double? mileage;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.mileage});
+  /// Car size: hatchback, sedan or suv — with the fuel and the traffic speed, it sets the trip's fuel use.
+  final String body;
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.body = 'hatchback'});
   factory Vehicle.fromJson(Map<String, dynamic> j) {
     return Vehicle(
         id: _s(j['id']),
@@ -69,7 +69,7 @@ class Vehicle {
         plate: _s(j['plate']),
         seats: _i(j['seats']),
         fuel: _s(j['fuel']),
-        mileage: j['mileage'] == null ? null : _d(j['mileage']));
+        body: _ns(j['body']) ?? 'hatchback');
   }
   String get title => '$color $make $model';
 }
@@ -392,7 +392,11 @@ class CostPreview {
   final double units;
   final String unit, fuelLabel;
   final int fuelCost, tolls;
-  final bool ownMileage;
+
+  /// Average moving speed from the traffic forecast, and what the trip works out to in km per unit.
+  final int speedKmh;
+  final double kmPerUnit;
+  final String carLabel;
 
   /// The same trip alone on the meter (Mumbai auto, taxi), or null from an older server.
   final (int auto, int taxi)? meter;
@@ -411,7 +415,9 @@ class CostPreview {
         fuelLabel = _s((j['cost'] as Map)['label']).toLowerCase(),
         fuelCost = _i((j['cost'] as Map)['fuelCost']),
         tolls = _i((j['cost'] as Map)['tolls']),
-        ownMileage = (j['cost'] as Map)['ownMileage'] == true,
+        speedKmh = _i((j['cost'] as Map)['speedKmh']),
+        kmPerUnit = _d((j['cost'] as Map)['kmPerUnit']),
+        carLabel = _s((j['cost'] as Map)['carLabel']).toLowerCase(),
         meter = j['meter'] is Map ? (_i((j['meter'] as Map)['auto']), _i((j['meter'] as Map)['taxi'])) : null,
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
@@ -428,7 +434,7 @@ String? _working(dynamic seat) {
   final r = seat is Map ? seat['rate'] : null;
   if (r is! Map || r['auto'] != true) return null;
   String n(dynamic v) => _d(v).toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
-  return '₹${n(r['price'])} a ${r['unit']} of ${_s(r['label']).toLowerCase()} ÷ ${n(r['kmPerUnit'])} km a ${r['unit']}${r['ownMileage'] == true ? ' (your car)' : ' (typical in city traffic)'} ÷ ${r['people']} people';
+  return '₹${n(r['price'])} a ${r['unit']} of ${_s(r['label']).toLowerCase()} ÷ ${n(r['kmPerUnit'])} km a ${r['unit']} (typical in city traffic) ÷ ${r['people']} people';
 }
 
 class FeedItem {

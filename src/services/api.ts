@@ -406,7 +406,7 @@ export type MlReport = {
   assistant?: { accuracy: number; examples: number; intents: number; messages30d: number; understoodRate: number | null; topIntents: { intent: string; n: number }[] }
 }
 
-export async function saveVehicle(v: Omit<Vehicle, 'id' | 'mileage'> & { mileage?: number | null }) {
+export async function saveVehicle(v: Omit<Vehicle, 'id'>) {
   const u = await request<User>('PUT', '/me/vehicle', v)
   setCached('/me', u)
   return u
@@ -515,29 +515,33 @@ export type FuelRate = {
   label: string
   unit: 'litre' | 'kg' | 'kWh'
   price: number
+  /** A hatchback at a typical Mumbai speed (25 km/h). */
   kmPerUnit: number
-  ownMileage: boolean
+  jamPerHour: number
   people: number
   perSeatKm: number
   co2KgPerKm: number
 }
 /** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
-  /** Fuel (for the km + standing in traffic) × today's price + tolls and parking. */
+  /** Fuel (moving at the traffic speed + crawling in jams) × today's price + tolls and parking. */
   total: number
   km: number
   min: number
   trafficMin: number
   fuel: Vehicle['fuel']
   label: string
+  body: NonNullable<Vehicle['body']>
+  carLabel: string
   unit: 'litre' | 'kg' | 'kWh'
   price: number
-  kmPerUnit: number
-  ownMileage: boolean
-  idlePerHour: number
+  speedKmh: number
+  per100: number
+  jamPerHour: number
   drivingUnits: number
   trafficUnits: number
   units: number
+  kmPerUnit: number
   fuelCost: number
   tolls: number
   perKm: number
@@ -546,6 +550,7 @@ export type TripCost = {
   timeCost: number
   summary: string
 }
+
 export type CostPreview = {
   cost: TripCost
   /** 'seat' = BlaBlaCar-style price per seat chosen by the driver; 'share' = the earlier live split. */

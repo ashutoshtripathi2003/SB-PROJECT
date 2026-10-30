@@ -1,3 +1,4 @@
+import type { CarType } from '../src/lib/fuel'
 import { FUELS, fuelCost, type FuelType } from './fuel'
 
 /**
@@ -7,7 +8,7 @@ import { FUELS, fuelCost, type FuelType } from './fuel'
  *   kg CO₂ saved = rider's km × seats × kg/km of how they used to travel − detour km × kg/km of the driver's car
  *
  * How the rider used to travel is their answer in Profile ("How did you usually get to college?"):
- *   own car  — their car's fuel and mileage (a typical petrol car if they have none in the app)
+ *   own car  — their car's fuel and size (a typical petrol hatchback if they have none in the app)
  *   cab      — a typical petrol car in city traffic: 2.31 kg a litre ÷ 10 km a litre = 0.231 kg/km
  *   auto     — a CNG auto-rickshaw: 2.75 kg a kg of CNG ÷ about 27 km a kg ≈ 0.10 kg/km
  *   bike     — a petrol two-wheeler: 2.31 kg a litre ÷ about 45 km a litre ≈ 0.05 kg/km
@@ -21,20 +22,20 @@ export const TRAVEL_MODES: TravelMode[] = ['car', 'cab', 'auto', 'bike', 'train'
 
 /** kg of CO₂ from burning one litre of petrol. */
 export const CO2_KG_PER_LITRE = FUELS.petrol.co2PerUnit
-/** A petrol car in Mumbai city traffic. */
-export const CITY_KM_PER_LITRE = FUELS.petrol.kmPerUnit
-/** A typical petrol car (or cab) in city traffic: 0.231 kg/km. */
+/** A petrol hatchback at a typical Mumbai speed (about 11.8 km/L). */
+export const CITY_KM_PER_LITRE = fuelCost('petrol').kmPerUnit
+/** A typical petrol car (or cab) in city traffic: about 0.196 kg/km. */
 export const CAR_KG_PER_KM = Math.round((CO2_KG_PER_LITRE / CITY_KM_PER_LITRE) * 1000) / 1000
 
 /** kg/km for each way of travelling to college, except your own car (which uses the car's own figures). */
 export const MODE_KG_PER_KM: Record<Exclude<TravelMode, 'car'>, number> = { cab: CAR_KG_PER_KM, auto: 0.1, bike: 0.05, train: 0, bus: 0, walk: 0 }
 
-type Car = { fuel: FuelType; mileage?: number }
+type Car = { fuel: FuelType; body?: CarType }
 
 /** kg/km of the trip the rider no longer makes. */
 export function replacedKgPerKm(mode: TravelMode | null | undefined, ownCar?: Car): number {
   if (!mode) return CAR_KG_PER_KM
-  if (mode === 'car') return ownCar ? fuelCost(ownCar.fuel, ownCar.mileage).co2KgPerKm : CAR_KG_PER_KM
+  if (mode === 'car') return ownCar ? fuelCost(ownCar.fuel, ownCar.body).co2KgPerKm : CAR_KG_PER_KM
   return MODE_KG_PER_KM[mode] ?? CAR_KG_PER_KM
 }
 
@@ -49,7 +50,7 @@ export function co2SavedKg(km: number, seats = 1, kgPerKm = CAR_KG_PER_KM): numb
 /** CO₂ saved by one booking: the rider's replaced trips minus the driver's detour to carry them (never below 0). */
 export function bookingCo2Kg(p: { km: number; seats: number; mode?: TravelMode | null; riderCar?: Car; detourKm?: number; driverCar?: Car }): number {
   const saved = p.km > 0 && p.seats > 0 ? p.km * p.seats * replacedKgPerKm(p.mode, p.riderCar) : 0
-  const detour = Math.max(0, p.detourKm ?? 0) * fuelCost(p.driverCar?.fuel ?? 'petrol', p.driverCar?.mileage).co2KgPerKm
+  const detour = Math.max(0, p.detourKm ?? 0) * fuelCost(p.driverCar?.fuel ?? 'petrol', p.driverCar?.body).co2KgPerKm
   return Math.max(0, round1(saved - detour))
 }
 

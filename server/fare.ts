@@ -1,11 +1,13 @@
 import { db, one, run } from './db'
+import { CAR_TYPES, jamPerHour, per100, unitShort, type CarType } from '../src/lib/fuel'
 import { DEFAULT_PETROL, fuelCost, fuelPrice, perSeatKmFromPetrol, type FuelType } from './fuel'
 
 /**
  * Fares: riders share what the trip really costs the car, and nothing more.
  *
- *   trip cost  = fuel for the km (km ÷ the car's real mileage) + fuel burned standing in the forecast traffic
- *                (minutes × litres an hour idling), × today's fuel price, + tolls and parking
+ *   trip cost  = fuel for the km at the average speed the traffic forecast (TomTom) allows, read off a speed–fuel
+ *                curve for the car's fuel and size, + fuel burned in the jam minutes, × today's fuel price,
+ *                + tolls and parking
  *   each pays  = trip cost × their km ÷ everyone's km (driver included): an equal share per km in the car
  *
  * A rider books at their share with the riders already in, plus a 10% cushion for a worse jam than forecast; that
@@ -13,7 +15,7 @@ import { DEFAULT_PETROL, fuelCost, fuelPrice, perSeatKmFromPetrol, type FuelType
  * cost (only ever lower). The driver pays their own share. No platform fee, no profit: it's cost-sharing.
  *
  * FARE_MODE=seat switches new rides to the BlaBlaCar way instead: a fixed price per seat from the distance
- * (km × fuel price ÷ mileage ÷ 4 people) that the driver may set from half to one and a half times.
+ * (km × fuel price ÷ typical km per litre ÷ 4 people) that the driver may set from half to one and a half times.
  */
 
 /** perSeatKm: ₹ per km per seat (FARE_MODE=seat). perKm / perMin: kept for older apps; trip costs now come from fuel. */
@@ -57,8 +59,8 @@ export function fareRates(): FareRates {
  * ₹ per km per seat for this car: its fuel's price ÷ its km per unit (the driver's own figure, else the typical
  * city figure) ÷ 4 people. The admin's own rate, when set, is used for every car.
  */
-export function rateFor(vehicle?: { fuel: FuelType; mileage?: number }) {
-  const cost = fuelCost(vehicle?.fuel ?? 'petrol', vehicle?.mileage)
+export function rateFor(vehicle?: { fuel: FuelType; body?: CarType }) {
+  const cost = fuelCost(vehicle?.fuel ?? 'petrol', vehicle?.body)
   return perSeatKmAuto() ? { ...cost, auto: true } : { ...cost, perSeatKm: fareRates().perSeatKm, auto: false }
 }
 export type Rate = ReturnType<typeof rateFor>
@@ -75,33 +77,38 @@ export function setFareRates(p: Partial<FareRates> & { auto?: boolean }) {
 export type RouteLike = { distanceKm: number; durationMin: number; trafficDelayMin?: number }
 
 export type TripCost = {
-  /** What the trip really costs the car: its fuel (driving + standing in traffic) plus tolls and parking. */
+  /** What the trip really costs the car: its fuel (moving + crawling in jams) plus tolls and parking. */
   total: number
   km: number
+  /** Door-to-door minutes with the traffic forecast for the departure time, and the jam minutes in them. */
   min: number
-  /** Minutes of the trip spent in traffic (part of `min`), from the traffic forecast for the departure time. */
   trafficMin: number
   fuel: FuelType
   label: string
+  body: CarType
+  carLabel: string
   unit: 'litre' | 'kg' | 'kWh'
   /** ₹ per litre (kg, kWh) today. */
   price: number
-  /** The car's km per unit: the driver's own figure (`ownMileage`) or the typical Mumbai figure. */
-  kmPerUnit: number
-  ownMileage: boolean
-  idlePerHour: number
-  /** Fuel for the km, fuel burned standing in traffic, and both (litres, kg or kWh). */
+  /** Average speed while moving (km ÷ the minutes outside jams), and the fuel per 100 km at that speed. */
+  speedKmh: number
+  per100: number
+  /** Units burned per hour crawling in a jam (engine running, AC on). */
+  jamPerHour: number
+  /** Fuel for the km, fuel burned in the jams, and both (litres, kg or kWh). */
   drivingUnits: number
   trafficUnits: number
   units: number
+  /** What this trip works out to: km per litre (kg, kWh) overall. */
+  kmPerUnit: number
   fuelCost: number
   tolls: number
-  /** ₹ of fuel per km driven and per minute in traffic; distanceCost + timeCost = fuelCost. */
+  /** ₹ of fuel per km moving and per minute in jams; distanceCost + timeCost ≈ fuelCost. */
   perKm: number
   perMin: number
   distanceCost: number
   timeCost: number
-  /** One line people can check: "25 km ÷ 7 km/L = 3.57 L + 30 min in traffic × 0.8 L/h = 0.4 L → 3.97 L × ₹111.21 = ₹442" */
+  /** One line people can check. */
   summary: string
 }
 
@@ -109,45 +116,56 @@ const r1 = (n: number) => Math.round(n * 10) / 10
 const r2 = (n: number) => Math.round(n * 100) / 100
 
 /**
- * The real cost of driving this route in this car: the fuel for its km at the car's mileage, plus the fuel it burns
- * standing in the forecast traffic, times today's fuel price, plus any tolls and parking the driver pays.
+ * The real cost of driving this route in this car at this time. No mileage figure: the traffic forecast (TomTom)
+ * gives the trip's minutes and how many of them are jams, so the average moving speed is km ÷ the other minutes.
+ * The fuel per 100 km at that speed comes from the speed–fuel curve for the car's fuel and size (src/lib/fuel.ts);
+ * the jam minutes add what the engine burns crawling with the AC on. Times today's fuel price, plus tolls/parking.
  */
-export function tripCost(route: RouteLike, car?: { fuel: FuelType; mileage?: number }, tolls = 0): TripCost {
+export function tripCost(route: RouteLike, car?: { fuel: FuelType; body?: CarType }, tolls = 0): TripCost {
   const km = r1(Math.max(0, route.distanceKm))
   const min = Math.max(0, Math.round(route.durationMin))
   const trafficMin = Math.max(0, Math.min(min, Math.round(route.trafficDelayMin ?? 0)))
-  const f = fuelCost(car?.fuel ?? 'petrol', car?.mileage)
-  const drivingUnits = km / f.kmPerUnit
-  const trafficUnits = (trafficMin / 60) * f.idlePerHour
+  const fuel = car?.fuel ?? 'petrol'
+  const body = car?.body ?? 'hatchback'
+  const f = fuelCost(fuel, body)
+  const movingMin = Math.max(1, min - trafficMin)
+  const speedKmh = km > 0 ? Math.round(km / (movingMin / 60)) : 0
+  const rate = per100(fuel, body, speedKmh)
+  const jam = jamPerHour(fuel, body)
+  const drivingUnits = (km * rate) / 100
+  const trafficUnits = (trafficMin / 60) * jam
   const units = drivingUnits + trafficUnits
-  const fuel = units * f.price
+  const fuelRs = units * f.price
   const toll = Math.max(0, Math.round(tolls))
-  const total = Math.round(fuel + toll)
-  const u = f.unit === 'litre' ? 'L' : f.unit
-  const traffic = trafficMin ? ` + ${trafficMin} min in traffic × ${f.idlePerHour} ${u}/h = ${r2(trafficUnits)} ${u}` : ''
+  const total = Math.round(fuelRs + toll)
+  const u = unitShort(fuel)
+  const jams = trafficMin ? ` + ${trafficMin} min of jams × ${r2(jam)} ${u}/h = ${r2(trafficUnits)} ${u}` : ''
   return {
     total,
     km,
     min,
     trafficMin,
-    fuel: f.fuel,
+    fuel,
     label: f.label,
+    body,
+    carLabel: CAR_TYPES[body].label,
     unit: f.unit,
     price: f.price,
-    kmPerUnit: f.kmPerUnit,
-    ownMileage: f.ownMileage,
-    idlePerHour: f.idlePerHour,
+    speedKmh,
+    per100: r2(rate),
+    jamPerHour: r2(jam),
     drivingUnits: r2(drivingUnits),
     trafficUnits: r2(trafficUnits),
     units: r2(units),
-    fuelCost: Math.round(fuel),
+    kmPerUnit: units > 0 ? r1(km / units) : 0,
+    fuelCost: Math.round(fuelRs),
     tolls: toll,
-    perKm: r2(f.price / f.kmPerUnit),
-    perMin: r2((f.idlePerHour * f.price) / 60),
+    perKm: r2((rate / 100) * f.price),
+    perMin: r2((jam * f.price) / 60),
     distanceCost: Math.round(drivingUnits * f.price),
     timeCost: Math.round(trafficUnits * f.price),
     summary:
-      `${km} km ÷ ${f.kmPerUnit} km/${u} = ${r2(drivingUnits)} ${u}${traffic} → ${r2(units)} ${u} of ${f.label.toLowerCase()} × ₹${f.price} = ₹${Math.round(fuel)}` +
+      `${km} km moving at ${speedKmh} km/h → ${r2(rate)} ${u}/100 km = ${r2(drivingUnits)} ${u}${jams} → ${r2(units)} ${u} of ${f.label.toLowerCase()} × ₹${f.price} = ₹${Math.round(fuelRs)}` +
       (toll ? ` + ₹${toll} tolls/parking = ₹${total}` : ''),
   }
 }

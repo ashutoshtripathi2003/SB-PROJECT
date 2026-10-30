@@ -209,7 +209,7 @@ export function OfferRide() {
                 {seat.rate?.auto && (
                   <>
                     (₹{seat.rate.perSeatKm} = {seat.rate.label.toLowerCase()} ₹{seat.rate.price} a {seat.rate.unit} ÷ {seat.rate.kmPerUnit} km a {seat.rate.unit}
-                    {seat.rate.ownMileage ? ' (your car)' : ' (typical in city traffic)'} ÷ {seat.rate.people} people.){' '}
+                    {' (typical in city traffic)'} ÷ {seat.rate.people} people.){' '}
                   </>
                 )} Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
               </p>
@@ -235,6 +235,9 @@ export function OfferRide() {
                 </span>
                 <span className="stack" style={{ alignItems: 'flex-end' }}>
                   <span className="t-sm t-muted">
+                    {cost.cost.km} km at {cost.cost.speedKmh} km/h{cost.cost.trafficMin > 0 ? ` + ${cost.cost.trafficMin} min jams` : ''}
+                  </span>
+                  <span className="t-sm t-muted">
                     {cost.cost.units} {cost.cost.unit === 'litre' ? 'L' : cost.cost.unit} {cost.cost.label.toLowerCase()} · {money(cost.cost.fuelCost)}
                   </span>
                   {cost.cost.tolls > 0 && <span className="t-sm t-muted">+ tolls/parking {money(cost.cost.tolls)}</span>}
@@ -250,8 +253,8 @@ export function OfferRide() {
                 ))}
               </div>
               <p className="cost-working">
-                {cost.cost.summary}.{' '}
-                {cost.cost.ownMileage ? 'Mileage: your car’s own figure.' : `Mileage: a typical ${cost.cost.label.toLowerCase()} car in Mumbai — add yours in Vehicle Information for an exact cost.`} Riders book
+                {cost.cost.summary}. The speed is from the traffic forecast for your departure time; a {cost.cost.carLabel.toLowerCase()} on{' '}
+                {cost.cost.label.toLowerCase()} uses that much at that speed, so this trip works out to {cost.cost.kmPerUnit} km/{cost.cost.unit === 'litre' ? 'L' : cost.cost.unit}. Riders book
                 at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if
                 the real cost is lower, their prices drop. They never go up.
                 {cost.meter && ` Alone by auto this trip is about ${money(cost.meter.auto)}, by taxi ${money(cost.meter.taxi)}.`}

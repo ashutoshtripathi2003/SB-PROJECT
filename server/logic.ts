@@ -74,7 +74,7 @@ export function vehicleFor(userId: string): Vehicle | undefined {
     plate: String(v.plate),
     seats: Number(v.seats),
     fuel: v.fuel as Vehicle['fuel'],
-    ...(v.mileage_city != null ? { mileage: Number(v.mileage_city) } : {}),
+    body: ((v.body as string) || 'hatchback') as Vehicle['body'],
   }
 }
 

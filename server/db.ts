@@ -153,11 +153,11 @@ addColumn('bookings', 'off_route_alerted_at', 'TEXT')
 addColumn('bookings', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'reminded', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('rides', 'women_only', 'INTEGER NOT NULL DEFAULT 0')
-// Fair fares (server/fare.ts). mileage_city: the driver's own km per litre (kg, kWh) in city traffic, used for the
-// suggested seat price and CO₂ (server/fuel.ts); the smooth / traffic columns are from an earlier design and unused.
+// Mileage columns: from earlier fare designs, unused (fuel now comes from the traffic speed and the car's size, `body`).
 addColumn('vehicles', 'mileage_smooth', 'REAL')
 addColumn('vehicles', 'mileage_city', 'REAL')
 addColumn('vehicles', 'mileage_traffic', 'REAL')
+addColumn('vehicles', 'body', "TEXT NOT NULL DEFAULT 'hatchback'")
 addColumn('rides', 'fare_mode', "TEXT NOT NULL DEFAULT 'fixed'")
 addColumn('rides', 'cost_total', 'INTEGER')
 addColumn('rides', 'cost_detail', 'TEXT')

@@ -1,11 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Vehicle } from '@/lib/types'
-import { FUEL_SPECS, mileageUnit } from '@/lib/fuel'
+import { CAR_TYPES, type CarType } from '@/lib/fuel'
 import { MAX_SEATS, formatPlate, validatePlate } from '@/lib/validation'
 import { Button, Field, Notice, Segmented, Stepper } from './ui'
 
-/** `mileage`: the car's own km per litre (kg, kWh) in city traffic; null clears it. */
-export type VehicleDraft = Omit<Vehicle, 'id' | 'mileage'> & { mileage?: number | null }
+export type VehicleDraft = Omit<Vehicle, 'id'>
 
 export function VehicleForm({
   initial,
@@ -25,18 +24,11 @@ export function VehicleForm({
     plate: initial?.plate ?? '',
     seats: initial?.seats ?? 3,
     fuel: initial?.fuel ?? 'petrol',
+    body: initial?.body ?? 'hatchback',
   })
-  const [mileage, setMileage] = useState(initial?.mileage != null ? String(initial.mileage) : '')
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-
-  const spec = FUEL_SPECS[v.fuel]
-  function mileageError() {
-    if (!mileage.trim()) return null
-    const n = Number(mileage)
-    return Number.isFinite(n) && n >= spec.mileage.min && n <= spec.mileage.max ? null : `Between ${spec.mileage.min} and ${spec.mileage.max} ${mileageUnit(v.fuel)}, or leave it empty`
-  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -45,14 +37,13 @@ export function VehicleForm({
       model: v.model.trim() ? null : 'Enter the model, e.g. City',
       color: v.color.trim() ? null : 'Enter the colour',
       plate: validatePlate(v.plate),
-      mileage: mileageError(),
     }
     setErrors(errs)
     if (Object.values(errs).some(Boolean)) return
     setSaving(true)
     setFormError(null)
     try {
-      await onSubmit({ ...v, make: v.make.trim(), model: v.model.trim(), color: v.color.trim(), plate: formatPlate(v.plate), mileage: mileage.trim() ? Number(mileage) : null })
+      await onSubmit({ ...v, make: v.make.trim(), model: v.model.trim(), color: v.color.trim(), plate: formatPlate(v.plate) })
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Couldn’t save your car.')
     } finally {
@@ -100,15 +91,19 @@ export function VehicleForm({
           ]}
         />
       </div>
-      <Field
-        label={`Mileage in city traffic (${mileageUnit(v.fuel)}) — optional`}
-        inputMode="decimal"
-        placeholder={`Typical: ${spec.kmPerUnit}`}
-        value={mileage}
-        onChange={(e) => setMileage(e.target.value.replace(/[^0-9.]/g, ''))}
-        error={errors.mileage}
-        hint={`What your car really gives in Mumbai traffic. It sets the fuel cost riders share; leave it empty to use a typical ${spec.label.toLowerCase()} car (${spec.kmPerUnit} ${mileageUnit(v.fuel)}).`}
-      />
+      <div className="field">
+        <span className="field__label">Car type</span>
+        <Segmented<CarType>
+          label="Car type"
+          value={v.body ?? 'hatchback'}
+          onChange={(body) => setV({ ...v, body })}
+          options={(Object.keys(CAR_TYPES) as CarType[]).map((k) => ({ value: k, label: k === 'sedan' ? 'Sedan' : k === 'suv' ? 'SUV / MUV' : 'Hatchback' }))}
+        />
+        <span className="field__hint">
+          {CAR_TYPES[v.body ?? 'hatchback'].label}: {CAR_TYPES[v.body ?? 'hatchback'].examples}. With the fuel type and the live traffic, this sets the trip cost riders share — no mileage
+          figure needed.
+        </span>
+      </div>
       <div className="stack gap-2" style={{ marginTop: 8 }}>
         <Button type="submit" size="lg" block loading={saving}>
           {submitLabel}

@@ -42,34 +42,30 @@ describe('real petrol price', () => {
     expect(fuel.parseFuelPrice('<p>Petrol ₹ 111.21</p>', 'diesel')).toBeNull()
   })
 
-  it('turns it into ₹ per km per seat: petrol ÷ 10 km/L in city traffic ÷ 4 people', () => {
-    expect(fuel.perSeatKmFromPetrol(111.21)).toBe(2.8)
-    expect(fuel.perSeatKmFromPetrol(96)).toBe(2.4)
-    expect(fuel.perSeatKmFromPetrol(130)).toBe(3.25)
+  it('turns it into ₹ per km per seat (FARE_MODE=seat): petrol ÷ a hatchback\'s 11.8 km/L at Mumbai speed ÷ 4 people', () => {
+    expect(fuel.KM_PER_LITRE).toBe(11.8)
+    expect(fuel.perSeatKmFromPetrol(111.21)).toBe(2.35)
+    expect(fuel.perSeatKmFromPetrol(96)).toBe(2.05)
+    expect(fuel.perSeatKmFromPetrol(130)).toBe(2.75)
   })
 
-  it("prices each fuel by its own cost and the car's real mileage", () => {
-    // Typical city mileage when the driver gives none.
-    expect(fuel.fuelCost('petrol')).toMatchObject({ price: 111.21, kmPerUnit: 10, perSeatKm: 2.8, co2KgPerKm: 0.231, ownMileage: false })
-    expect(fuel.fuelCost('diesel')).toMatchObject({ price: 97.83, kmPerUnit: 13, perSeatKm: 1.9, co2KgPerKm: 0.206 })
-    expect(fuel.fuelCost('cng')).toMatchObject({ unit: 'kg', price: 77, kmPerUnit: 15, perSeatKm: 1.3, co2KgPerKm: 0.183 })
-    expect(fuel.fuelCost('ev')).toMatchObject({ unit: 'kWh', price: 12, kmPerUnit: 6, perSeatKm: 0.5, co2KgPerKm: 0.12 })
-    // A petrol car that really does 6 km/L in Mumbai traffic: ₹111.21 ÷ 6 ÷ 4 = ₹4.65.
-    expect(fuel.fuelCost('petrol', 6)).toMatchObject({ kmPerUnit: 6, ownMileage: true, perSeatKm: 4.65, co2KgPerKm: 0.385 })
-    // Unbelievable figures are ignored.
-    expect(fuel.fuelCost('petrol', 80)).toMatchObject({ kmPerUnit: 10, ownMileage: false })
-    expect(fuel.ownMileage('ev', 20)).toBeUndefined()
+  it('gives each fuel and car size its own cost and CO₂ per km at a typical Mumbai speed', () => {
+    expect(fuel.fuelCost('petrol')).toMatchObject({ price: 111.21, kmPerUnit: 11.8, perSeatKm: 2.35, co2KgPerKm: 0.196 })
+    expect(fuel.fuelCost('diesel')).toMatchObject({ price: 97.83, kmPerUnit: 14.7, perSeatKm: 1.65, co2KgPerKm: 0.182 })
+    expect(fuel.fuelCost('cng')).toMatchObject({ unit: 'kg', price: 77, kmPerUnit: 15.9, perSeatKm: 1.2, co2KgPerKm: 0.173 })
+    expect(fuel.fuelCost('ev')).toMatchObject({ unit: 'kWh', price: 12, kmPerUnit: 8.2, perSeatKm: 0.35, co2KgPerKm: 0.088 })
+    expect(fuel.fuelCost('petrol', 'sedan')).toMatchObject({ kmPerUnit: 9.4, jamPerHour: 1.25 })
   })
 
   it('follows the real price automatically; the admin can set their own and switch back', async () => {
     // Before any reading: the built-in Mumbai price.
-    expect(fare.fareRates().perSeatKm).toBe(2.8)
+    expect(fare.fareRates().perSeatKm).toBe(2.35)
     // The first page is down, the second answers: the price is saved and new rides follow it.
     const r = await fuel.refreshFuelPrice(fakeFetch('120.00'))
     expect(r).toMatchObject({ ok: true, price: { petrol: 120, diesel: 97.83, source: 'fuel.example' } })
     expect(r.tried).toHaveLength(2)
-    expect(fare.fareRates().perSeatKm).toBe(3)
-    expect(fare.seatPrice(25).suggested).toBe(75)
+    expect(fare.fareRates().perSeatKm).toBe(2.55)
+    expect(fare.seatPrice(25).suggested).toBe(65)
     // Nothing answers: the last reading stays.
     const failing = (async () => new Response('', { status: 500 })) as typeof fetch
     expect(await fuel.refreshFuelPrice(failing)).toMatchObject({ ok: false, price: { petrol: 120 } })
@@ -77,7 +73,7 @@ describe('real petrol price', () => {
     const admin = request.agent(app)
     await admin.post('/api/auth/dev').set(H).send({ email: 'fuel.admin@vit.edu.in' })
     const report = (await admin.get('/api/admin/fare-rates')).body
-    expect(report).toMatchObject({ auto: true, rates: { perSeatKm: 3 }, fuel: { petrol: 120, kmPerLitre: 10, people: 4, perSeatKm: 3 } })
+    expect(report).toMatchObject({ auto: true, rates: { perSeatKm: 2.55 }, fuel: { petrol: 120, kmPerLitre: 11.8, people: 4, perSeatKm: 2.55 } })
     expect(report.fuels.map((f: { fuel: string; auto: boolean }) => [f.fuel, f.auto])).toEqual([
       ['petrol', true],
       ['diesel', true],
@@ -88,8 +84,8 @@ describe('real petrol price', () => {
     // CNG and electricity prices are the admin's to set; out-of-range prices are refused.
     expect((await admin.put('/api/admin/fare-rates').set(H).send({ prices: { cng: 5 } })).status).toBe(400)
     const set = (await admin.put('/api/admin/fare-rates').set(H).send({ prices: { cng: 80, ev: 10 } })).body
-    expect(set.fuels.find((f: { fuel: string }) => f.fuel === 'cng')).toMatchObject({ price: 80, perSeatKm: 1.35 })
-    expect(set.fuels.find((f: { fuel: string }) => f.fuel === 'ev')).toMatchObject({ price: 10, perSeatKm: 0.4 })
+    expect(set.fuels.find((f: { fuel: string }) => f.fuel === 'cng')).toMatchObject({ price: 80, perSeatKm: 1.25 })
+    expect(set.fuels.find((f: { fuel: string }) => f.fuel === 'ev')).toMatchObject({ price: 10, perSeatKm: 0.3 })
     expect(set.fuel.petrol).toBe(120)
 
     // The admin's own rate wins, even when petrol changes...
@@ -97,6 +93,6 @@ describe('real petrol price', () => {
     await fuel.refreshFuelPrice(fakeFetch('96.00'))
     expect(fare.fareRates().perSeatKm).toBe(2.5)
     // ...until they switch back to automatic.
-    expect((await admin.put('/api/admin/fare-rates').set(H).send({ auto: true })).body).toMatchObject({ auto: true, rates: { perSeatKm: 2.4 } })
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ auto: true })).body).toMatchObject({ auto: true, rates: { perSeatKm: 2.05 } })
   })
 })

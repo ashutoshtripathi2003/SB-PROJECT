@@ -255,8 +255,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                         ]),
                         const SizedBox(height: 10),
                         Text(
-                            'You don’t set a price: riders share what this trip really costs your car — fuel for the distance and for the time stuck in traffic, plus tolls and parking — equally with you, by the km each person rides. ${cost.summary}. '
-                            '${cost.ownMileage ? 'Mileage: your car’s own figure.' : 'Mileage: a typical ${cost.fuelLabel} car in Mumbai — add yours in Vehicle for an exact cost.'} '
+                            'You don’t set a price: riders share what this trip really costs your car — fuel for the distance at the speed traffic allows and for the jams, plus tolls and parking — equally with you, by the km each person rides. ${cost.summary}. '
+                            'The speed is from the traffic forecast for your departure time: a ${cost.carLabel} on ${cost.fuelLabel} uses that much at that speed, so this trip works out to ${cost.kmPerUnit} km/${cost.unit}. '
                             'Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.'
                             '${cost.meter == null ? '' : ' Alone by auto this trip is about ${money(cost.meter!.$1)}, by taxi ${money(cost.meter!.$2)}.'}',
                             style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
