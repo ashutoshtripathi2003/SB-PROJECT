@@ -149,8 +149,8 @@ class Api {
   Future<Ride> offerRide(Map<String, dynamic> body) async => Ride.fromJson(_map(await post('/rides', body)));
 
   /// Fair fares: the trip's cost with the driver's car and the traffic forecast, and each person's share.
-  Future<CostPreview> costPreview(Place from, Place to, DateTime at, int seats) async =>
-      CostPreview.fromJson(_map(await post('/rides/cost-preview', {'origin': from.toJson(), 'destination': to.toJson(), 'departAt': at.toUtc().toIso8601String(), 'seats': seats})));
+  Future<CostPreview> costPreview(Place from, Place to, DateTime at, int seats, {int tolls = 0}) async =>
+      CostPreview.fromJson(_map(await post('/rides/cost-preview', {'origin': from.toJson(), 'destination': to.toJson(), 'departAt': at.toUtc().toIso8601String(), 'seats': seats, 'tolls': tolls})));
   Future<void> cancelRide(String id, [String? reason]) => post('/rides/$id/cancel', {'reason': ?reason});
   Future<void> startRide(String id) => post('/rides/$id/start');
   Future<void> sendLocation(String rideId, double lat, double lng, double? heading) =>

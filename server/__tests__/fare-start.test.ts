@@ -2,7 +2,6 @@ import request from 'supertest'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
-process.env.FARE_MODE = 'share' // the earlier live-split design, still used by rides created that way
 process.env.DEV_LOGIN = 'true'
 process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
 process.env.OSRM_URL = 'http://127.0.0.1:9'
@@ -59,7 +58,8 @@ describe('price at the start', () => {
     await driver.put('/api/me/vehicle').set(H).send({ make: 'Hyundai', model: 'Venue', color: 'Grey', plate: 'MH01AB9999', seats: 3, fuel: 'diesel' })
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
     const preview = (await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })).body
-    expect(preview.cost).toMatchObject({ km: 25, min: 113, total: 25 * 7 + 113 })
+    // Diesel at 13 km/L: 25 ÷ 13 = 1.92 L + 55 min × 0.7 L/h = 0.64 L → 2.57 L × ₹97.83 = ₹251.
+    expect(preview.cost).toMatchObject({ km: 25, min: 113, trafficMin: 55, fuel: 'diesel', total: 251 })
     expect(preview.trafficDelayMin).toBe(55)
     const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [] })).body
 

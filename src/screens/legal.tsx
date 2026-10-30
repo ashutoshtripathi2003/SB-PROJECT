@@ -213,8 +213,8 @@ export function TermsOfUse() {
 
       <h2>3. Cost sharing, not business</h2>
       <p>
-        Prices are meant only to share the cost of the trip. RideSync suggests a price per seat from the distance and the car’s fuel cost, and drivers may
-        adjust it within the limits shown in the app. Drivers must not use RideSync to make a profit or to run a commercial taxi service. RideSync does
+        Prices are meant only to share the cost of the trip. RideSync works out each rider’s share of the trip’s real fuel, toll and parking cost; drivers do not set
+        their own price. Drivers must not use RideSync to make a profit or to run a commercial taxi service. RideSync does
         not currently charge a platform fee; if that changes, we will tell you before it applies.
       </p>
 

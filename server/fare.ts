@@ -2,21 +2,21 @@ import { db, one, run } from './db'
 import { DEFAULT_PETROL, fuelCost, fuelPrice, perSeatKmFromPetrol, type FuelType } from './fuel'
 
 /**
- * Fares, exactly the BlaBlaCar way: a fixed price per seat that the driver sets.
+ * Fares: riders share what the trip really costs the car, and nothing more.
  *
- *   suggested price = route km × ₹ per km per seat
- *   ₹ per km per seat = the car's fuel price ÷ its km per litre (kg, kWh) in city traffic ÷ 4 people
- *                       (automatic, see fuel.ts; petrol ₹111.21 ÷ 10 km/L ÷ 4 → ₹2.80), or a rate the admin types in instead
- *   driver may set  = half to one and a half times the suggestion, never below ₹30
- *   a rider pays    = the seat price for the part of the route they ride (matching: at least 40% of it)
+ *   trip cost  = fuel for the km (km ÷ the car's real mileage) + fuel burned standing in the forecast traffic
+ *                (minutes × litres an hour idling), × today's fuel price, + tolls and parking
+ *   each pays  = trip cost × their km ÷ everyone's km (driver included): an equal share per km in the car
  *
- * The price is fixed when the ride is published and never changes for anyone who books. No platform fee.
+ * A rider books at their share with the riders already in, plus a 10% cushion for a worse jam than forecast; that
+ * is the most they can ever pay. It drops as more riders join, and at the start the live traffic sets the final
+ * cost (only ever lower). The driver pays their own share. No platform fee, no profit: it's cost-sharing.
  *
- * FARE_MODE=share keeps an earlier design (the trip's cost from km and minutes, split live among everyone
- * with a 10% cushion that drops as riders join and at the start); rides created that way keep working.
+ * FARE_MODE=seat switches new rides to the BlaBlaCar way instead: a fixed price per seat from the distance
+ * (km × fuel price ÷ mileage ÷ 4 people) that the driver may set from half to one and a half times.
  */
 
-/** perSeatKm: ₹ per km per seat (the BlaBlaCar-style suggestion). perKm / perMin: the earlier trip-cost design. */
+/** perSeatKm: ₹ per km per seat (FARE_MODE=seat). perKm / perMin: kept for older apps; trip costs now come from fuel. */
 export type FareRates = { perSeatKm: number; perKm: number; perMin: number }
 
 export const DEFAULT_RATES: FareRates = { perSeatKm: perSeatKmFromPetrol(DEFAULT_PETROL), perKm: 7, perMin: 1 }
@@ -75,37 +75,80 @@ export function setFareRates(p: Partial<FareRates> & { auto?: boolean }) {
 export type RouteLike = { distanceKm: number; durationMin: number; trafficDelayMin?: number }
 
 export type TripCost = {
+  /** What the trip really costs the car: its fuel (driving + standing in traffic) plus tolls and parking. */
   total: number
   km: number
   min: number
-  /** Minutes of the trip spent in traffic (part of `min`). */
+  /** Minutes of the trip spent in traffic (part of `min`), from the traffic forecast for the departure time. */
   trafficMin: number
+  fuel: FuelType
+  label: string
+  unit: 'litre' | 'kg' | 'kWh'
+  /** ₹ per litre (kg, kWh) today. */
+  price: number
+  /** The car's km per unit: the driver's own figure (`ownMileage`) or the typical Mumbai figure. */
+  kmPerUnit: number
+  ownMileage: boolean
+  idlePerHour: number
+  /** Fuel for the km, fuel burned standing in traffic, and both (litres, kg or kWh). */
+  drivingUnits: number
+  trafficUnits: number
+  units: number
+  fuelCost: number
+  tolls: number
+  /** ₹ of fuel per km driven and per minute in traffic; distanceCost + timeCost = fuelCost. */
   perKm: number
   perMin: number
   distanceCost: number
   timeCost: number
-  /** One line people can check: "18 km × ₹7 + 55 min × ₹1 = ₹181" */
+  /** One line people can check: "25 km ÷ 7 km/L = 3.57 L + 30 min in traffic × 0.8 L/h = 0.4 L → 3.97 L × ₹111.21 = ₹442" */
   summary: string
 }
 
 const r1 = (n: number) => Math.round(n * 10) / 10
+const r2 = (n: number) => Math.round(n * 100) / 100
 
-export function tripCost(route: RouteLike, rates: Pick<FareRates, 'perKm' | 'perMin'> = fareRates()): TripCost {
+/**
+ * The real cost of driving this route in this car: the fuel for its km at the car's mileage, plus the fuel it burns
+ * standing in the forecast traffic, times today's fuel price, plus any tolls and parking the driver pays.
+ */
+export function tripCost(route: RouteLike, car?: { fuel: FuelType; mileage?: number }, tolls = 0): TripCost {
   const km = r1(Math.max(0, route.distanceKm))
   const min = Math.max(0, Math.round(route.durationMin))
-  const distanceCost = km * rates.perKm
-  const timeCost = min * rates.perMin
-  const total = Math.round(distanceCost + timeCost)
+  const trafficMin = Math.max(0, Math.min(min, Math.round(route.trafficDelayMin ?? 0)))
+  const f = fuelCost(car?.fuel ?? 'petrol', car?.mileage)
+  const drivingUnits = km / f.kmPerUnit
+  const trafficUnits = (trafficMin / 60) * f.idlePerHour
+  const units = drivingUnits + trafficUnits
+  const fuel = units * f.price
+  const toll = Math.max(0, Math.round(tolls))
+  const total = Math.round(fuel + toll)
+  const u = f.unit === 'litre' ? 'L' : f.unit
+  const traffic = trafficMin ? ` + ${trafficMin} min in traffic × ${f.idlePerHour} ${u}/h = ${r2(trafficUnits)} ${u}` : ''
   return {
     total,
     km,
     min,
-    trafficMin: Math.max(0, Math.min(min, Math.round(route.trafficDelayMin ?? 0))),
-    perKm: rates.perKm,
-    perMin: rates.perMin,
-    distanceCost: Math.round(distanceCost),
-    timeCost: Math.round(timeCost),
-    summary: `${km} km × ₹${rates.perKm} + ${min} min × ₹${rates.perMin} = ₹${total}`,
+    trafficMin,
+    fuel: f.fuel,
+    label: f.label,
+    unit: f.unit,
+    price: f.price,
+    kmPerUnit: f.kmPerUnit,
+    ownMileage: f.ownMileage,
+    idlePerHour: f.idlePerHour,
+    drivingUnits: r2(drivingUnits),
+    trafficUnits: r2(trafficUnits),
+    units: r2(units),
+    fuelCost: Math.round(fuel),
+    tolls: toll,
+    perKm: r2(f.price / f.kmPerUnit),
+    perMin: r2((f.idlePerHour * f.price) / 60),
+    distanceCost: Math.round(drivingUnits * f.price),
+    timeCost: Math.round(trafficUnits * f.price),
+    summary:
+      `${km} km ÷ ${f.kmPerUnit} km/${u} = ${r2(drivingUnits)} ${u}${traffic} → ${r2(units)} ${u} of ${f.label.toLowerCase()} × ₹${f.price} = ₹${Math.round(fuel)}` +
+      (toll ? ` + ₹${toll} tolls/parking = ₹${total}` : ''),
   }
 }
 
@@ -130,8 +173,8 @@ export function splitCost(cost: number, driverKm: number, riders: Rider[]): Map<
 export const perPersonIfFull = (cost: number, seats: number) => Math.max(MIN_FARE, round5(cost / (seats + 1)))
 
 export type FareMode = 'seat' | 'share'
-/** How new rides are priced: 'seat' (BlaBlaCar-style, the default) or 'share' (the earlier live split). */
-export const fareMode = (): FareMode => (process.env.FARE_MODE === 'share' ? 'share' : 'seat')
+/** How new rides are priced: 'share' (the trip's real cost split among everyone in the car, the default) or 'seat' (BlaBlaCar-style). */
+export const fareMode = (): FareMode => (process.env.FARE_MODE === 'seat' ? 'seat' : 'share')
 
 const floor5 = (n: number) => Math.floor(n / 5) * 5
 
@@ -144,6 +187,15 @@ export function seatPrice(km: number, perSeatKm = fareRates().perSeatKm) {
   const min = Math.max(MIN_FARE, floor5(suggested * 0.5))
   const max = Math.max(suggested, round5(suggested * 1.5))
   return { suggested, min, max, perSeatKm }
+}
+
+/**
+ * What the same trip would cost one person by Mumbai auto or black-and-yellow taxi on the meter (approximate:
+ * auto ₹26 for the first 1.5 km then ₹17.14 a km, taxi ₹31 then ₹20.66 a km), so riders can see what sharing saves.
+ */
+export function meterFares(km: number) {
+  const meter = (base: number, perKm: number) => Math.round(base + Math.max(0, km - 1.5) * perKm)
+  return { auto: meter(26, 17.14), taxi: meter(31, 20.66) }
 }
 
 /** The driver's own share: the trip cost minus what the riders pay (the driver pays it themselves). */

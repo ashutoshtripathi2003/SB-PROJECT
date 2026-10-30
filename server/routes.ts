@@ -50,7 +50,7 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, perSeatKmAuto, rateFor, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, meterFares, perPersonIfFull, perSeatKmAuto, rateFor, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
 import { FUELS, FUEL_TYPES, KM_PER_LITRE, PEOPLE, PRICE_RANGE, fuelCost, fuelPrice, ownMileage, perSeatKmFromPetrol, refreshFuelPrice, setFuelPrices } from './fuel'
 import { BOOKING_CO2_SQL, TRAVEL_MODES, bookingCo2Kg, type TravelMode } from './co2'
 import { pushConfigured, removePushToken, savePushToken } from './push'
@@ -505,6 +505,8 @@ function scoreFor(rideRowData: Row, query: SearchQuery, userId: string, hist = r
     m.fare = Math.round(q.fare / query.seats)
     m.fareMax = Math.round(q.max / query.seats)
   }
+  // What this rider's part of the trip would cost them alone by auto or taxi, for comparison.
+  if (m) m.meter = meterFares(riderKm(rideRowData, m.shareFraction))
   return m
 }
 
@@ -566,7 +568,8 @@ async function liveTripCost(r: Row): Promise<TripCost | null> {
   try {
     const route = await getRoute(JSON.parse(String(r.origin)), JSON.parse(String(r.destination)), { departAt: new Date() })
     const live = route.source === 'tomtom' || route.source === 'google' || route.trafficDelayMin != null
-    return live ? tripCost(route) : null
+    const booked = JSON.parse(String(r.cost_detail ?? '{}')) as Partial<TripCost>
+    return live ? tripCost(route, vehicleFor(String(r.driver_id)), booked.tolls ?? 0) : null
   } catch {
     return null
   }
@@ -717,16 +720,22 @@ api.post(
 
 /* ---- Rides: offering ------------------------------------------------------ */
 
+/** Tolls and parking the driver pays on this trip (₹), shared like the fuel. */
+const TollsZ = z.number().int().min(0, 'Tolls can’t be negative').max(2000, 'Tolls look too high').default(0)
+
 /** Driver's preview before offering: the trip's cost with their car and the traffic forecast, and each share. */
 api.post(
   '/rides/cost-preview',
   requireOnboarded,
   h(async (req) => {
-    const p = parse(z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(MAX_SEATS) }), req.body)
+    const p = parse(
+      z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(MAX_SEATS), tolls: TollsZ }),
+      req.body,
+    )
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
-    const cost = tripCost(route)
+    const cost = tripCost(route, vehicle, p.tolls)
     return {
       cost,
       mode: fareMode(),
@@ -735,6 +744,8 @@ api.post(
       // What each rider would book at (with the cushion; it can drop at the start), and what is left for the driver.
       shares: shareTable(cost.total * CUSHION, p.seats).map((s) => ({ ...s, driver: driverShare(cost.total, s.riders * s.each) })),
       perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
+      // The same trip alone by auto or taxi on the meter, for comparison.
+      meter: meterFares(route.distanceKm),
       distanceKm: Math.round(route.distanceKm * 10) / 10,
       durationMin: route.durationMin,
       trafficDelayMin: route.trafficDelayMin ?? 0,
@@ -757,6 +768,7 @@ api.post(
         preferences: z.array(PrefZ).max(7).default([]),
         note: z.string().max(200).optional(),
         womenOnly: z.boolean().optional(),
+        tolls: TollsZ,
       }),
       req.body,
     )
@@ -778,7 +790,7 @@ api.post(
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
     // The trip's cost from its km and its minutes with the traffic forecast for the departure time.
     const mode = fareMode()
-    const cost = mode === 'share' ? tripCost(route) : null
+    const cost = mode === 'share' ? tripCost(route, vehicle, p.tolls) : null
     let farePerSeat: number
     if (cost) farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
     else {

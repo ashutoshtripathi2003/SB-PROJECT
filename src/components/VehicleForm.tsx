@@ -107,7 +107,7 @@ export function VehicleForm({
         value={mileage}
         onChange={(e) => setMileage(e.target.value.replace(/[^0-9.]/g, ''))}
         error={errors.mileage}
-        hint={`What your car really gives in Mumbai traffic. It sets your suggested seat price; leave it empty to use a typical ${spec.label.toLowerCase()} car (${spec.kmPerUnit} ${mileageUnit(v.fuel)}).`}
+        hint={`What your car really gives in Mumbai traffic. It sets the fuel cost riders share; leave it empty to use a typical ${spec.label.toLowerCase()} car (${spec.kmPerUnit} ${mileageUnit(v.fuel)}).`}
       />
       <div className="stack gap-2" style={{ marginTop: 8 }}>
         <Button type="submit" size="lg" block loading={saving}>

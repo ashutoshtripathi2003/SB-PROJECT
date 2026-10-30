@@ -388,6 +388,15 @@ class CostPreview {
   final double km, perKm, perMin;
   final String summary;
 
+  /// The fuel behind [total]: litres (kg, kWh) for the km and for the traffic, its cost, and tolls/parking.
+  final double units;
+  final String unit, fuelLabel;
+  final int fuelCost, tolls;
+  final bool ownMileage;
+
+  /// The same trip alone on the meter (Mumbai auto, taxi), or null from an older server.
+  final (int auto, int taxi)? meter;
+
   /// What each rider pays with 1, 2, … riders going the whole way, and the driver's own share then.
   final List<(int riders, int each, int driver)> shares;
   CostPreview.fromJson(Map<String, dynamic> j)
@@ -397,6 +406,13 @@ class CostPreview {
         perKm = _d((j['cost'] as Map)['perKm']),
         perMin = _d((j['cost'] as Map)['perMin']),
         summary = _s((j['cost'] as Map)['summary']),
+        units = _d((j['cost'] as Map)['units']),
+        unit = _s((j['cost'] as Map)['unit']) == 'litre' ? 'L' : _s((j['cost'] as Map)['unit']),
+        fuelLabel = _s((j['cost'] as Map)['label']).toLowerCase(),
+        fuelCost = _i((j['cost'] as Map)['fuelCost']),
+        tolls = _i((j['cost'] as Map)['tolls']),
+        ownMileage = (j['cost'] as Map)['ownMileage'] == true,
+        meter = j['meter'] is Map ? (_i((j['meter'] as Map)['auto']), _i((j['meter'] as Map)['taxi'])) : null,
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
         mode = j['mode'] == 'seat' ? 'seat' : 'share',

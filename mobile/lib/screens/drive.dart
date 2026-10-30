@@ -41,6 +41,8 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
   final Set<String> _prefs = {};
   bool _womenOnly = false;
   final _note = TextEditingController();
+  final _tolls = TextEditingController();
+  int get _tollsRs => (int.tryParse(_tolls.text.trim()) ?? 0).clamp(0, 2000);
   RouteInfo? _route;
   bool _routing = false;
   CostPreview? _cost;
@@ -81,7 +83,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
     final seq = ++_costSeq;
     setState(() => _cost = null);
     try {
-      final c = await context.read<Session>().api.costPreview(_from, _to!, _at, _seats);
+      final c = await context.read<Session>().api.costPreview(_from, _to!, _at, _seats, tolls: _tollsRs);
       if (mounted && seq == _costSeq) setState(() => _cost = c);
     } catch (_) {}
   }
@@ -111,6 +113,7 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
         if (_note.text.trim().isNotEmpty) 'note': _note.text.trim(),
         if (_womenOnly && _canWomenOnly) 'womenOnly': true,
         if (_seatPrice != null) 'farePerSeat': _seatPrice,
+        'tolls': _tollsRs,
       });
       if (!mounted) return;
       await showMoment(context, Moment.published, 'Ride offered successfully', subtitle: 'Students going your way can see it and book now.');
@@ -118,6 +121,13 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
     } catch (e) {
       if (mounted) setState(() => (_error = errorText(e), _publishing = false));
     }
+  }
+
+  @override
+  void dispose() {
+    _note.dispose();
+    _tolls.dispose();
+    super.dispose();
   }
 
   @override
@@ -244,9 +254,24 @@ class _OfferRideScreenState extends State<OfferRideScreen> {
                           ],
                         ]),
                         const SizedBox(height: 10),
-                        Text('You don’t set a price: everyone in the car, you included, pays an equal share of the trip’s cost, from its distance and its time in traffic. ${cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.',
+                        Text(
+                            'You don’t set a price: riders share what this trip really costs your car — fuel for the distance and for the time stuck in traffic, plus tolls and parking — equally with you, by the km each person rides. ${cost.summary}. '
+                            '${cost.ownMileage ? 'Mileage: your car’s own figure.' : 'Mileage: a typical ${cost.fuelLabel} car in Mumbai — add yours in Vehicle for an exact cost.'} '
+                            'Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.'
+                            '${cost.meter == null ? '' : ' Alone by auto this trip is about ${money(cost.meter!.$1)}, by taxi ${money(cost.meter!.$2)}.'}',
                             style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.4)),
                       ]),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _tolls,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Tolls and parking on this trip (optional)',
+                  hintText: '₹0',
+                  helperText: 'e.g. Atal Setu or Sea Link toll, or paid parking. Shared like the fuel.',
+                ),
+                onChanged: (_) => _loadCost(),
               ),
             ],
             const SectionTitle('Pickup flexibility'),

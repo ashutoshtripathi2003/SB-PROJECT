@@ -2,6 +2,7 @@ import request from 'supertest'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
+process.env.FARE_MODE = 'seat' // the BlaBlaCar-style price per seat
 process.env.DEV_LOGIN = 'true'
 process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
 process.env.OSRM_URL = 'http://127.0.0.1:9' // force the offline route estimate

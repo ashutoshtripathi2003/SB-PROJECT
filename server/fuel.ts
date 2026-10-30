@@ -21,6 +21,8 @@ export type FuelInfo = {
   price: number
   /** Typical km per unit in Mumbai city traffic. */
   kmPerUnit: number
+  /** Units burned per hour standing in a jam (engine idling, AC on). */
+  idlePerHour: number
   /** kg of CO₂ from one unit (for EVs, from the electricity grid that charges it). */
   co2PerUnit: number
   /** Believable km per unit a driver may enter. */
@@ -118,6 +120,7 @@ export function fuelCost(fuel: FuelType = 'petrol', mileage?: number) {
     kmPerUnit,
     ownMileage: own != null,
     people: PEOPLE,
+    idlePerHour: info.idlePerHour,
     perSeatKm: perSeatKmFor(price, kmPerUnit),
     co2KgPerKm: Math.round((info.co2PerUnit / kmPerUnit) * 1000) / 1000,
   }

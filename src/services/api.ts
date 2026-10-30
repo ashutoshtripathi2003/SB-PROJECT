@@ -488,8 +488,10 @@ export type OfferInput = {
   destination: Place
   departAt: string
   seats: number
-  /** Ignored by the server since fair fares (riders pay an equal share of the trip cost). */
+  /** Only for FARE_MODE=seat rides; shared-cost rides have no driver-set price. */
   farePerSeat?: number
+  /** Tolls and parking the driver pays on this trip (₹), shared like the fuel. */
+  tolls?: number
   maxDetourKm: number
   preferences: RidePreference[]
   note?: string
@@ -521,10 +523,23 @@ export type FuelRate = {
 }
 /** The trip's cost from its distance and time: km × ₹ per km + minutes × ₹ per minute. */
 export type TripCost = {
+  /** Fuel (for the km + standing in traffic) × today's price + tolls and parking. */
   total: number
   km: number
   min: number
   trafficMin: number
+  fuel: Vehicle['fuel']
+  label: string
+  unit: 'litre' | 'kg' | 'kWh'
+  price: number
+  kmPerUnit: number
+  ownMileage: boolean
+  idlePerHour: number
+  drivingUnits: number
+  trafficUnits: number
+  units: number
+  fuelCost: number
+  tolls: number
   perKm: number
   perMin: number
   distanceCost: number
@@ -540,12 +555,14 @@ export type CostPreview = {
   /** Each rider's price with 1, 2, … riders, and the driver's own share then. */
   shares: { riders: number; each: number; driver: number }[]
   perPersonIfFull: number
+  /** The same trip alone on the meter: Mumbai auto and taxi (approximate). */
+  meter?: { auto: number; taxi: number }
   distanceKm: number
   durationMin: number
   trafficDelayMin: number
 }
 /** The trip's cost with the traffic forecast for that time, and what each person pays. */
-export const costPreview = (o: { origin: Place; destination: Place; departAt: string; seats: number }) => post<CostPreview>('/rides/cost-preview', o)
+export const costPreview = (o: { origin: Place; destination: Place; departAt: string; seats: number; tolls?: number }) => post<CostPreview>('/rides/cost-preview', o)
 
 async function mutate<T>(p: Promise<T>) {
   const r = await p

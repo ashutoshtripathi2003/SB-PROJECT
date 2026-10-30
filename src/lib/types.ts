@@ -219,6 +219,8 @@ export type MatchResult = {
   fareMax?: number
   /** Part of the driver's route this rider travels (0–1). */
   shareFraction?: number
+  /** The same trip alone on the meter (Mumbai auto and taxi, approximate), per person. */
+  meter?: { auto: number; taxi: number }
   reasons: string[]
   caveats: string[]
   history?: string

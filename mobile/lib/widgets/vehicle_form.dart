@@ -134,7 +134,7 @@ class VehicleFormState extends State<VehicleForm> {
           decoration: InputDecoration(
             labelText: 'Mileage in city traffic (km/$unit) — optional',
             hintText: 'Typical: ${_num(typical)}',
-            helperText: 'What your car really gives in Mumbai traffic. It sets your suggested seat price.',
+            helperText: 'What your car really gives in Mumbai traffic. It sets the fuel cost riders share.',
             helperMaxLines: 2,
             errorText: _errors['mileage'],
           ),
