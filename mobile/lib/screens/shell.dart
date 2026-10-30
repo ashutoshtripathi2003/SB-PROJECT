@@ -112,25 +112,21 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [HomeTab(onFind: () => goTo(1)), const FindTab(), const RidesTab(), const InboxTab(), const ProfileTab()];
+    final pages = [HomeTab(onFind: () => goTo(1), onAssistant: () => showAssistant(context, history: _assistant, onTab: goTo)), const FindTab(), const RidesTab(), const InboxTab(), const ProfileTab()];
     final student = context.select<Session, bool>((s) => s.user != null && !s.user!.adminOnly);
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
-      floatingActionButton: !student
+      // The map tabs (Home, Find) keep their sheet clear: Home opens the assistant from its top bar instead.
+      floatingActionButton: !student || _tab < 2
           ? null
-          : AnimatedPadding(
-              // Above the "Find a ride" button pinned to the bottom of the Find tab.
-              padding: EdgeInsets.only(bottom: _tab == 1 ? 76 : 0),
-              duration: const Duration(milliseconds: 200),
-              child: FloatingActionButton(
-                heroTag: 'assistant',
-                tooltip: 'RideSync Assistant',
-                backgroundColor: RS.primary,
-                foregroundColor: Colors.white,
-                shape: const CircleBorder(),
-                onPressed: () => showAssistant(context, history: _assistant, onTab: goTo),
-                child: const Icon(Icons.smart_toy_outlined, size: 26),
-              ),
+          : FloatingActionButton.small(
+              heroTag: 'assistant',
+              tooltip: 'RideSync Assistant',
+              backgroundColor: RS.primary,
+              foregroundColor: Colors.white,
+              shape: const CircleBorder(),
+              onPressed: () => showAssistant(context, history: _assistant, onTab: goTo),
+              child: const Icon(Icons.smart_toy_outlined, size: 22),
             ),
       bottomNavigationBar: DecoratedBox(
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: RS.line))),

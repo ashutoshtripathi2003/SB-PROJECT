@@ -19,8 +19,11 @@ import 'trip.dart';
 
 /// Home: the map of rides leaving soon, with "Where to?" on a sheet — like a ride app.
 class HomeTab extends StatelessWidget {
-  const HomeTab({super.key, required this.onFind});
+  const HomeTab({super.key, required this.onFind, this.onAssistant});
   final VoidCallback onFind;
+
+  /// Opens the RideSync Assistant (its button lives in the top bar here, not over the sheet).
+  final VoidCallback? onAssistant;
 
   String _greeting() {
     final h = DateTime.now().hour;
@@ -45,6 +48,7 @@ class HomeTab extends StatelessWidget {
           showBack: false,
           title: Image.asset('assets/ridesync-logo.png', height: 22),
           topActions: [
+            if (onAssistant != null) FloatingMapButton(icon: Icons.smart_toy_outlined, onTap: onAssistant!),
             FloatingMapButton(icon: Icons.notifications_none_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
           ],
           map: (pad) => RideMap(
