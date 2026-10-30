@@ -20,6 +20,7 @@ import { Wallet } from './screens/wallet'
 import { SharedTripPage } from './screens/sharedTrip'
 import { AdminApp } from './screens/admin'
 import { DeleteAccount, PrivacyPolicy, TermsOfUse } from './screens/legal'
+import { DownloadApp } from './screens/download'
 import { SearchProvider } from './state/search'
 
 export function App() {
@@ -39,6 +40,7 @@ export function App() {
               <Route path="/privacy" element={<PrivacyPolicy />} />
               <Route path="/terms" element={<TermsOfUse />} />
               <Route path="/delete-account" element={<DeleteAccount />} />
+              <Route path="/download" element={<DownloadApp />} />
               <Route path="/admin" element={<AdminApp />} />
               <Route path="/admin/:tab" element={<AdminApp />} />
 

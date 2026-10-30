@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { APK_FILES, apkPath, type ApkFile } from './apk'
 import { loadUser } from './auth'
 import { env } from './env'
 import { HttpError } from './logic'
@@ -33,6 +34,14 @@ export function createApp() {
 
   app.use('/api', api)
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Not found')))
+
+  // The Android app itself (see apk.ts); the /download page links here.
+  app.get(/^\/download\/(RideSync(?:-small)?\.apk)$/, (req, res, next) => {
+    const name = (req.params as Record<string, string>)[0] as ApkFile
+    if (!APK_FILES.includes(name) || !existsSync(apkPath(name))) return next()
+    res.set('Cache-Control', 'no-cache')
+    res.type('application/vnd.android.package-archive').download(apkPath(name), name)
+  })
 
   // Serve the built web app (npm run build) with SPA fallback.
   const dist = resolve(process.cwd(), 'dist')

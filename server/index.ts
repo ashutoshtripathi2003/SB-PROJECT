@@ -11,6 +11,7 @@ import { microsoftConfigured, anyMailConfigured, envFile } from './env'
 import { checkBasemap } from './basemap'
 import { pushConfigured, pushProject } from './push'
 import { refreshFuelPrice } from './fuel'
+import { refreshApk } from './apk'
 
 const app = createApp()
 // Machine-learning models: train shortly after start-up, then every 30 minutes on new data.
@@ -23,6 +24,13 @@ const readFuel = () =>
     .catch(() => {})
 setTimeout(readFuel, 5000)
 setInterval(readFuel, 6 * 3600_000)
+// The Android app for /download: a copy from GitHub at start-up, then a check for a newer one every 30 minutes.
+const readApk = () =>
+  refreshApk()
+    .then((r) => console.log(`[ridesync] Android app for /download: ${r}`))
+    .catch((e) => console.log(`[ridesync] ⚠ Android app for /download: ${(e as Error).message}`))
+setTimeout(readApk, 8000)
+setInterval(readApk, 30 * 60_000)
 // 15-minute ride reminders.
 setInterval(() => {
   try {
