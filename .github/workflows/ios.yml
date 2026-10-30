@@ -7,10 +7,9 @@ name: iPhone app
 # Sideloadly (free Apple ID; the app works for 7 days, then re-install) — see README
 # "iPhone". For TestFlight / App Store you need an Apple Developer account (₹8,700/year).
 
+# Manual only: iPhone users install the website as an app (docs/IOS-PWA.md), and a private repository
+# pays for Mac build minutes 10x. Run it from the Actions tab when an .ipa is really needed.
 on:
-  push:
-    branches: [main]
-    paths: ['mobile/**', '.github/workflows/ios.yml']
   workflow_dispatch:
 
 permissions:
