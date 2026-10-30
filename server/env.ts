@@ -100,6 +100,10 @@ export const env = {
     .filter(Boolean),
   /** Shown in the Privacy Policy and Terms as the contact / grievance address. */
   supportEmail: (process.env.SUPPORT_EMAIL || '').trim(),
+  /** Where the Android app is built (GitHub releases), for the /download page. */
+  githubRepo: (process.env.GITHUB_REPO || 'ashutoshtripathi2003/SB-PROJECT').trim(),
+  /** Needed once the repository is private: a read-only GitHub token (Contents: read) for that repository. */
+  githubToken: (process.env.GITHUB_TOKEN || '').trim(),
 }
 
 export const smtpConfigured = () => !!(env.smtp.host && env.smtp.user && env.smtp.pass && env.smtp.from)

@@ -22,8 +22,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request
   const url = new URL(req.url)
-  // Only this site's GET requests; never the API (live data) or other sites (maps, payments, sign-in).
-  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return
+  // Only this site's GET requests; never the API (live data), the app download or other sites (maps, payments, sign-in).
+  if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname.startsWith('/download/')) return
 
   // Pages: the network first (always the latest app), the cached shell when offline.
   if (req.mode === 'navigate') {

@@ -151,6 +151,16 @@ scp -i path/to/ssh-key.key ubuntu@SERVER_IP:/opt/ridesync/backups/ridesync-2026-
 
 **Use only one server.** Once the Oracle server is live, don't also run `start.bat` for students. That would give two separate copies of the data.
 
+## Making the GitHub repository private
+
+Do these before switching the repository to private. Otherwise updates stop working.
+
+1. **Server updates:** run `bash /opt/ridesync/deploy/oracle/github-key.sh` on the server. It prints a key. Add it on GitHub → repository → **Settings → Deploy keys → Add deploy key**, and leave "Allow write access" **off**. Run the script again. It should say **Done**.
+2. **App download page** (`/download`): on GitHub → **Settings → Developer settings → Fine-grained tokens**, make a token for this repository only, with **Contents: Read-only**. Add `GITHUB_TOKEN=...` to `/opt/ridesync/.env` (`sudo nano /opt/ridesync/.env`), then `sudo systemctl restart ridesync`.
+3. Then switch the repository to private: **Settings → General → Danger Zone → Change visibility**.
+
+Share **https://ridesync-vit.duckdns.org/download** instead of GitHub links. The server keeps the newest Android app and checks GitHub for a new build every 30 minutes.
+
 ## Troubleshooting
 
 | Problem | Fix |

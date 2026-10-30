@@ -1,6 +1,7 @@
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto'
 import { Router, type NextFunction, type Request, type Response } from 'express'
 import { z } from 'zod'
+import { apkInfo } from './apk'
 import { haversineKm, projectOnPolyline } from '../src/lib/geo'
 import { desiredTime, scoreRide } from '../src/lib/matching'
 import type {
@@ -112,6 +113,11 @@ function appBase(req: Request) {
   const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[)/.test(host)
   return `${local ? req.protocol : 'https'}://${host}`
 }
+
+// For the public /download page.
+api.get('/app/download', (_req, res) => {
+  res.json(apkInfo())
+})
 
 api.get('/config', (req, res) => {
   res.json({ allowedDomain: env.allowedDomain, googleClientId: env.googleClientId || null, microsoftLogin: microsoftConfigured(), emailLogin: otpEnabled(), codesInTerminal: otpEnabled() && !anyMailConfigured(), devLogin: env.devLogin, razorpayKeyId: razorpayConfigured() ? env.razorpay.keyId : null, maps: mapsConfig({ app: isAppClient(req), base: appBase(req) }), push: pushConfigured(), fare: { mode: fareMode(), rates: fareRates(), cushion: CUSHION }, supportEmail: env.supportEmail || null })
