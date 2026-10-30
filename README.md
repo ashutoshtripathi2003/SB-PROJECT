@@ -241,6 +241,8 @@ The free plan includes 2,500 route/ETA requests and 50,000 map tiles a day. Ride
 
 The mobile app is a **Flutter** app written in **Dart**, in the `mobile/` folder. It talks to the same server as the website, so app and website users share the same accounts, rides, chats and live updates. It signs in with an email code and keeps its login securely on the phone.
 
+**iPhone:** there is no App Store build (that needs a Mac and a paid Apple account). iPhone users install the website as an app instead: Safari → Share → **Add to Home Screen**. See [docs/IOS-PWA.md](docs/IOS-PWA.md).
+
 | Part | Package |
 |---|---|
 | UI | Flutter (Material 3) with RideSync's colours and fonts (`lib/theme.dart`) |
@@ -317,7 +319,7 @@ No laptop handy? Open the website in Safari → **Share** → **Add to Home Scre
 - live trip status
 - payment by UPI (opens GPay/PhonePe/Paytm) or cash
 - the driver's live GPS on the map
-- Offer a ride with a price per seat, BlaBlaCar-style: suggested from the distance (km × a rate that follows the real petrol price: petrol ÷ 15 km/L ÷ 4 people ≈ ₹1.85), adjustable from half to 1.5× (at least ₹30)
+- Offer a ride; riders share its real cost: the fuel the car burns at the average speed the traffic forecast allows (a speed–fuel curve for its fuel and size, no mileage figure) + fuel burned in the jam minutes + tolls/parking, split equally by the km each person rides (driver included). Booked prices include a 10% cushion, drop as riders join and are fixed with live traffic at the start (never up)
 - driver controls (accept/decline, start, arrived, picked up, dropped off, complete)
 - chat, notifications, My Rides, payments
 - SOS (112 and a text to your emergency contacts) and ratings
@@ -373,7 +375,7 @@ Production must be served over **HTTPS**. Login cookies are marked secure, and p
 |---|---|
 | Sign in | Sign in with Microsoft (VIT Outlook account) or an email code. The server checks the account belongs to VIT's Microsoft directory and the email ends in `@vit.edu.in`, creates the account on first login, and sets a 90-day httpOnly session cookie. |
 | Onboarding | Name, mobile number, student ID, commute mode, then car and UPI ID for drivers, then permissions. |
-| Offer a Ride | The server gets the road route (Google Routes, or free OSRM), suggests a price per seat from the distance, exactly like BlaBlaCar (route km × ₹ per km per seat, at least ₹30). The rate follows the real petrol price automatically: `server/fuel.ts` reads today's Mumbai price every 6 hours, and rate = petrol ÷ 15 km/L ÷ 4 people (₹111.21 → ₹1.85); the admin can set their own instead. The driver can set half to 1.5× of it; the price is fixed once published, riders going part of the way pay for their part, and there is no platform fee (`server/fare.ts`). Every online student's search and Home feed refresh straight away. |
+| Offer a Ride | The server gets the road route (Google Routes, or free OSRM) with the traffic forecast for the departure time and works out what the trip really costs the car (`server/fare.ts`): the average moving speed (km ÷ the minutes outside jams, from the TomTom/Google traffic forecast) gives the fuel per 100 km from a speed–fuel curve for the car's fuel and size (hatchback/sedan/SUV, `src/lib/fuel.ts`), plus the jam minutes × what the engine burns crawling, × today's fuel price (petrol and diesel read every 6 hours, `server/fuel.ts`; CNG and electricity set by the admin), + tolls/parking the driver enters. Riders share it equally with the driver by the km each rides; each books at their share + a 10% cushion, which drops as others join and is fixed with live traffic when the trip starts (never up). The preview also shows the same trip by auto and taxi. No platform fee. (FARE_MODE=seat switches to a BlaBlaCar-style price per seat.) CO₂ saved per booking = the rider's km × the CO₂ per km of how they used to get to college (car, cab, auto, bike; none for train, bus or walking) − the driver's detour (`server/co2.ts`). Every online student's search and Home feed refresh straight away. |
 | Find a Ride | The server scores every ride with the AI matcher (route overlap, pickup distance, timing, preferences, reliability) and returns explained matches. |
 | Book | The rider requests a seat and the driver gets a live notification. The driver accepts or declines, and seats can't be overbooked. |
 | Pay | The rider pays the driver directly by **UPI**: the app opens GPay/PhonePe/Paytm with the amount filled in, or shows a QR code on desktop. Riders can also choose **cash at pickup**, or **pay online** when Razorpay is set up. The driver can mark UPI or cash payment as received. |

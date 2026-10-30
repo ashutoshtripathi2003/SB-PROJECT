@@ -301,7 +301,7 @@ function RateTrip({ detail }: { detail: BookingDetail }) {
           </div>
           <div>
             <dt>CO₂ saved</dt>
-            <dd>~{(2.4 * booking.seats).toFixed(1)} kg</dd>
+            <dd>{booking.co2Kg ? `~${booking.co2Kg.toFixed(1)} kg` : '—'}</dd>
           </div>
         </dl>
         <div className="stack gap-5" style={{ alignItems: 'center', marginTop: 8 }}>

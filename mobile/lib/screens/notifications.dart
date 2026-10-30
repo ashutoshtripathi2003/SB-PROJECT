@@ -31,6 +31,23 @@ IconData _icon(String kind) => switch (kind) {
       _ => Icons.notifications_none,
     };
 
+/// Icon colour and background for each kind (green good news, red cancellations, purple requests).
+(Color, Color) _tone(String kind) => switch (kind) {
+      'accepted' || 'payment' => (RS.success, RS.success50),
+      'rejected' || 'cancelled' => (RS.danger, RS.danger50),
+      'request' || 'match' => (RS.primary, RS.primary50),
+      'arriving' => (RS.secondary, const Color(0xFFEEF2FF)),
+      _ => (RS.ink500, RS.sunken),
+    };
+
+/// Filters, like Uber's inbox. Chat messages live in the Messages tab, so they're left out here.
+const _filters = [
+  ('All', {'request', 'accepted', 'rejected', 'cancelled', 'payment', 'arriving', 'match', 'system'}),
+  ('Rides', {'request', 'accepted', 'rejected', 'cancelled', 'arriving', 'match'}),
+  ('Payments', {'payment'}),
+  ('Updates', {'system'}),
+];
+
 class NotificationsList extends StatefulWidget {
   const NotificationsList({super.key});
   @override
@@ -39,70 +56,103 @@ class NotificationsList extends StatefulWidget {
 
 class _NotificationsListState extends State<NotificationsList> {
   bool _seen = false;
+  int _filter = 0;
 
   /// Looking at the list counts as reading it (like Uber / Instagram): the Inbox badge clears.
   void _markSeen(List<AppNotification> list) {
     if (_seen || list.every((n) => n.read)) return;
     _seen = true;
     final api = context.read<Session>().api;
-    WidgetsBinding.instance.addPostFrameCallback((_) => api.readAllNotifications().catchError((_) {}));
+    Future.delayed(const Duration(milliseconds: 1500), () => api.readAllNotifications().catchError((_) {}));
   }
 
   @override
   Widget build(BuildContext context) => LiveLoader<List<AppNotification>>(
         load: (api) => api.notifications(),
-        builder: (context, list, reload) {
+        builder: (context, all, reload) {
+          final list = all.where((n) => n.kind != 'chat').toList();
           _markSeen(list);
-          if (list.isEmpty) {
-            return ListView(children: const [EmptyState(icon: Icons.notifications_none, title: 'You’re all caught up', body: 'Ride requests, acceptances and payments show up here.')]);
+          final shown = list.where((n) => _filters[_filter].$2.contains(n.kind)).toList();
+          final groups = <String, List<AppNotification>>{};
+          for (final n in shown) {
+            final d = dayOf(n.createdAt);
+            groups.putIfAbsent(d == 'Today' || d == 'Yesterday' ? d : 'Earlier', () => []).add(n);
           }
-          final unread = list.where((n) => !n.read).length;
-          return ListView.separated(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            itemCount: list.length + 1,
-            separatorBuilder: (_, i) => i == 0 ? const SizedBox() : const Divider(indent: 72),
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
-                  child: Row(children: [
-                    Text(unread == 0 ? 'All caught up' : '$unread unread', style: const TextStyle(color: RS.ink500, fontWeight: FontWeight.w600)),
-                    const Spacer(),
-                    if (unread > 0)
-                      TextButton(
-                        onPressed: () async {
-                          await attempt(context, () => context.read<Session>().api.readAllNotifications());
-                          await reload();
-                        },
-                        child: const Text('Mark all read'),
-                      ),
-                  ]),
-                );
-              }
-              final n = list[index - 1];
-              return ListTile(
-                tileColor: n.read ? null : RS.primary50,
-                leading: CircleAvatar(backgroundColor: n.read ? RS.sunken : RS.primary100, child: Icon(_icon(n.kind), color: RS.primary, size: 20)),
-                title: Text(n.title, style: TextStyle(fontWeight: n.read ? FontWeight.w500 : FontWeight.w700)),
-                subtitle: Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: Text(ago(n.createdAt), style: const TextStyle(color: RS.ink500, fontSize: 12)),
-                onTap: () async {
-                  if (!n.read) {
-                    await context.read<Session>().api.post('/notifications/${n.id}/read').catchError((_) => null);
-                    reload();
-                  }
-                  if (!context.mounted) return;
-                  if (n.link != null) {
-                    openLink(context, n.link!);
-                  } else {
-                    _showDetail(context, n);
-                  }
-                },
-              );
-            },
-          );
+          return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 24), children: [
+            SizedBox(
+              height: 40,
+              child: ListView(scrollDirection: Axis.horizontal, children: [
+                for (final (i, f) in _filters.indexed)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(label: Text(f.$1), selected: _filter == i, showCheckmark: false, onSelected: (_) => setState(() => _filter = i)),
+                  ),
+              ]),
+            ),
+            if (shown.isEmpty)
+              EmptyState(icon: Icons.notifications_none, title: 'You’re all caught up', body: _filter == 0 ? 'Ride requests, acceptances and payments show up here.' : 'Nothing here yet.'),
+            for (final g in groups.entries) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
+                child: Text(g.key.toUpperCase(), style: const TextStyle(color: RS.ink500, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+              ),
+              for (final n in g.value) _NotificationRow(n, reload),
+            ],
+          ]);
         },
       );
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow(this.n, this.reload);
+  final AppNotification n;
+  final Future<void> Function() reload;
+
+  @override
+  Widget build(BuildContext context) {
+    final (fg, bg) = _tone(n.kind);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: n.read ? Colors.transparent : RS.primary50,
+        borderRadius: BorderRadius.circular(RS.radiusMd),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(RS.radiusMd),
+          onTap: () async {
+            if (!n.read) {
+              await context.read<Session>().api.post('/notifications/${n.id}/read').catchError((_) => null);
+              reload();
+            }
+            if (!context.mounted) return;
+            if (n.link != null) {
+              openLink(context, n.link!);
+            } else {
+              _showDetail(context, n);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              CircleAvatar(radius: 22, backgroundColor: bg, child: Icon(_icon(n.kind), color: fg, size: 20)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Expanded(child: Text(n.title, style: TextStyle(fontWeight: n.read ? FontWeight.w600 : FontWeight.w700, fontSize: 15, color: RS.ink900))),
+                    const SizedBox(width: 8),
+                    Text(ago(n.createdAt), style: const TextStyle(color: RS.ink400, fontSize: 12)),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: RS.ink500, fontSize: 13.5, height: 1.35)),
+                ]),
+              ),
+              if (n.link != null) const Padding(padding: EdgeInsets.only(left: 4, top: 10), child: Icon(Icons.chevron_right_rounded, color: RS.ink400, size: 20)),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Notifications without a linked ride (welcome, system messages) open as a sheet.
@@ -113,7 +163,7 @@ void _showDetail(BuildContext context, AppNotification n) => showModalBottomShee
           padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              CircleAvatar(backgroundColor: RS.primary100, child: Icon(_icon(n.kind), color: RS.primary, size: 20)),
+              CircleAvatar(backgroundColor: _tone(n.kind).$2, child: Icon(_icon(n.kind), color: _tone(n.kind).$1, size: 20)),
               const SizedBox(width: 12),
               Expanded(child: Text(n.title, style: RS.heading(18))),
             ]),

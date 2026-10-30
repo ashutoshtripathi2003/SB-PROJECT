@@ -50,8 +50,9 @@ import { checkIdCard, type IdOcr } from './ocr'
 import { answer, assistantStats } from './assistant'
 import { tomtomConfigured, trafficTile } from './traffic'
 import { basemapTile } from './basemap'
-import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, perPersonIfFull, perSeatKmAuto, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
-import { KM_PER_LITRE, PEOPLE, fuelPrice, perSeatKmFromPetrol, refreshFuelPrice } from './fuel'
+import { CUSHION, RATE_LIMITS, driverShare, fareMode, fareRates, meterFares, perPersonIfFull, perSeatKmAuto, rateFor, seatPrice, setFareRates, shareTable, splitCost, tripCost, type Rider as FareRider, type TripCost } from './fare'
+import { FUELS, FUEL_TYPES, KM_PER_LITRE, PEOPLE, PRICE_RANGE, fuelCost, fuelPrice, perSeatKmFromPetrol, refreshFuelPrice, setFuelPrices } from './fuel'
+import { BOOKING_CO2_SQL, TRAVEL_MODES, bookingCo2Kg, type TravelMode } from './co2'
 import { pushConfigured, removePushToken, savePushToken } from './push'
 import { mapsConfig, resolvePlace, reverseGeocode, searchPlaces } from './maps'
 import { microsoftCallback, microsoftStart, takeHandoff } from './microsoft'
@@ -215,6 +216,7 @@ const ProfileZ = z.object({
   programme: z.string().max(80).optional(),
   gender: z.enum(['female', 'male', 'other', 'undisclosed']).optional(),
   commute: z.enum(['driver', 'rider', 'both']).optional(),
+  usualMode: z.enum(TRAVEL_MODES as [TravelMode, ...TravelMode[]]).optional(),
   upiId: z
     .string()
     .trim()
@@ -270,6 +272,7 @@ api.patch(
     if (p.programme !== undefined) cols.push(['programme', p.programme || null])
     if (p.gender !== undefined) cols.push(['gender', p.gender])
     if (p.commute !== undefined) cols.push(['commute', p.commute])
+    if (p.usualMode !== undefined) cols.push(['usual_mode', p.usualMode])
     if (p.upiId !== undefined) cols.push(['upi_id', p.upiId || null])
     if (p.preferences !== undefined) cols.push(['preferences', JSON.stringify(p.preferences)])
     if (p.emergencyContacts !== undefined) cols.push(['emergency_contacts', JSON.stringify(p.emergencyContacts)])
@@ -292,7 +295,9 @@ api.put(
         plate: z.string().trim().max(20),
         seats: z.number().int().min(1).max(MAX_SEATS),
         fuel: z.enum(['petrol', 'diesel', 'cng', 'ev']),
-        // Sent by older apps (fares used to depend on the car's mileage); no longer used.
+        // Car size: sets how much fuel it burns at a given traffic speed. Older apps don't send it (kept as it was).
+        body: z.enum(['hatchback', 'sedan', 'suv']).optional(),
+        // Sent by older apps (fares no longer use a mileage figure); ignored.
         mileage: z.unknown().optional(),
       }),
       req.body,
@@ -302,6 +307,7 @@ api.put(
     const existing = vehicleFor(meId(req))
     if (existing) run(`UPDATE vehicles SET make=?, model=?, color=?, plate=?, seats=?, fuel=? WHERE user_id = ?`, v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel, meId(req))
     else run(`INSERT INTO vehicles (id, user_id, make, model, color, plate, seats, fuel) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, newId('v'), meId(req), v.make, v.model, v.color, formatPlate(v.plate), v.seats, v.fuel)
+    if (v.body) run(`UPDATE vehicles SET body = ? WHERE user_id = ?`, v.body, meId(req))
     if (me(req).commute === 'rider' || !me(req).commute) run(`UPDATE users SET commute = 'both' WHERE id = ?`, meId(req))
     return meUser(one(`SELECT * FROM users WHERE id = ?`, meId(req))!)
   }),
@@ -497,6 +503,8 @@ function scoreFor(rideRowData: Row, query: SearchQuery, userId: string, hist = r
     m.fare = Math.round(q.fare / query.seats)
     m.fareMax = Math.round(q.max / query.seats)
   }
+  // What this rider's part of the trip would cost them alone by auto or taxi, for comparison.
+  if (m) m.meter = meterFares(riderKm(rideRowData, m.shareFraction))
   return m
 }
 
@@ -558,7 +566,8 @@ async function liveTripCost(r: Row): Promise<TripCost | null> {
   try {
     const route = await getRoute(JSON.parse(String(r.origin)), JSON.parse(String(r.destination)), { departAt: new Date() })
     const live = route.source === 'tomtom' || route.source === 'google' || route.trafficDelayMin != null
-    return live ? tripCost(route) : null
+    const booked = JSON.parse(String(r.cost_detail ?? '{}')) as Partial<TripCost>
+    return live ? tripCost(route, vehicleFor(String(r.driver_id)), booked.tolls ?? 0) : null
   } catch {
     return null
   }
@@ -709,24 +718,32 @@ api.post(
 
 /* ---- Rides: offering ------------------------------------------------------ */
 
+/** Tolls and parking the driver pays on this trip (₹), shared like the fuel. */
+const TollsZ = z.number().int().min(0, 'Tolls can’t be negative').max(2000, 'Tolls look too high').default(0)
+
 /** Driver's preview before offering: the trip's cost with their car and the traffic forecast, and each share. */
 api.post(
   '/rides/cost-preview',
   requireOnboarded,
   h(async (req) => {
-    const p = parse(z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(MAX_SEATS) }), req.body)
+    const p = parse(
+      z.object({ origin: PlaceZ, destination: PlaceZ, departAt: z.string().datetime(), seats: z.number().int().min(1).max(MAX_SEATS), tolls: TollsZ }),
+      req.body,
+    )
     const vehicle = vehicleFor(meId(req))
     if (!vehicle) throw new HttpError(400, 'Add your car before offering a ride.', 'vehicle')
     const route = await getRoute(p.origin, p.destination, { departAt: new Date(p.departAt) })
-    const cost = tripCost(route)
+    const cost = tripCost(route, vehicle, p.tolls)
     return {
       cost,
       mode: fareMode(),
       // BlaBlaCar-style: the suggested price per seat (from the distance) and the range the driver may choose from.
-      seat: seatPrice(route.distanceKm),
+      seat: { ...seatPrice(route.distanceKm, rateFor(vehicle).perSeatKm), rate: rateFor(vehicle) },
       // What each rider would book at (with the cushion; it can drop at the start), and what is left for the driver.
       shares: shareTable(cost.total * CUSHION, p.seats).map((s) => ({ ...s, driver: driverShare(cost.total, s.riders * s.each) })),
       perPersonIfFull: perPersonIfFull(cost.total * CUSHION, p.seats),
+      // The same trip alone by auto or taxi on the meter, for comparison.
+      meter: meterFares(route.distanceKm),
       distanceKm: Math.round(route.distanceKm * 10) / 10,
       durationMin: route.durationMin,
       trafficDelayMin: route.trafficDelayMin ?? 0,
@@ -749,6 +766,7 @@ api.post(
         preferences: z.array(PrefZ).max(7).default([]),
         note: z.string().max(200).optional(),
         womenOnly: z.boolean().optional(),
+        tolls: TollsZ,
       }),
       req.body,
     )
@@ -770,12 +788,12 @@ api.post(
     const route = await getRoute(p.origin, p.destination, { departAt: depart })
     // The trip's cost from its km and its minutes with the traffic forecast for the departure time.
     const mode = fareMode()
-    const cost = mode === 'share' ? tripCost(route) : null
+    const cost = mode === 'share' ? tripCost(route, vehicle, p.tolls) : null
     let farePerSeat: number
     if (cost) farePerSeat = perPersonIfFull(cost.total * CUSHION, p.seats)
     else {
       // BlaBlaCar-style: the driver's price per seat, kept within the range (the suggestion if none is given).
-      const range = seatPrice(route.distanceKm)
+      const range = seatPrice(route.distanceKm, rateFor(vehicle).perSeatKm)
       farePerSeat = p.farePerSeat == null ? range.suggested : Math.min(range.max, Math.max(range.min, Math.round(p.farePerSeat)))
     }
 
@@ -989,8 +1007,8 @@ api.post(
     const km = riderKm(r, match.shareFraction)
     const quote = share ? quoteShare(r, km, query.seats) : null
     run(
-      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, fare_max, share_km, fare_final, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO bookings (id, ride_id, rider_id, pickup, drop_place, seats, fare, status, match_score, message, payment_status, ride_pin, fare_max, share_km, rider_km, co2_kg, fare_final, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 'unpaid', ?, ?, ?, ?, ?, ?, ?, ?)`,
       id,
       r.id,
       meId(req),
@@ -1003,6 +1021,15 @@ api.post(
       newPin(),
       quote ? quote.max : null,
       share ? km : null,
+      km,
+      bookingCo2Kg({
+        km,
+        seats: query.seats,
+        mode: me(req).usual_mode as TravelMode | null,
+        riderCar: vehicleFor(meId(req)),
+        detourKm: match.detourKm,
+        driverCar: vehicleFor(String(r.driver_id)),
+      }),
       share ? 0 : 1,
       now,
       now,
@@ -1502,6 +1529,9 @@ api.get(
         ride: { ...ride, route: [] },
         other: publicUser(otherId),
         status: b.status,
+        role: b.riderId === meId(req) ? ('rider' as const) : ('driver' as const),
+        // Messages not read yet: the unread chat notifications for this conversation.
+        unread: Number(one<{ n: number }>(`SELECT COUNT(*) n FROM notifications WHERE user_id = ? AND kind = 'chat' AND link = ? AND read = 0`, meId(req), `/chat/${b.id}`)?.n ?? 0),
         last: last ? { id: String(last.id), threadId: b.id, senderId: String(last.sender_id), text: String(last.text), createdAt: String(last.created_at), system: !!Number(last.system) } : undefined,
       }
     })
@@ -1817,7 +1847,7 @@ api.get(
         online: count(`SELECT COALESCE(SUM(fare), 0) n FROM bookings WHERE payment_status = 'paid_online'`),
         walletTopups: count(`SELECT COALESCE(SUM(amount), 0) n FROM wallet_tx WHERE kind = 'topup' AND status = 'done'`),
         refunds: count(`SELECT COUNT(*) n FROM bookings WHERE payment_status = 'refunded'`),
-        co2Kg: Math.round(count(`SELECT COALESCE(SUM(seats), 0) n FROM bookings WHERE status = 'completed'`) * 2.4),
+        co2Kg: Math.round(count(`SELECT COALESCE(SUM(${BOOKING_CO2_SQL}), 0) n FROM bookings b JOIN rides r ON r.id = b.ride_id WHERE b.status = 'completed'`)),
       },
       eta: accuracy(),
       daily: days.map((d) => ({ day: d, offered: offered[d] ?? 0, booked: booked[d] ?? 0, completed: completed[d] ?? 0, cancelled: cancelled[d] ?? 0 })),
@@ -2019,11 +2049,17 @@ api.put(
           perKm: z.number().min(RATE_LIMITS.perKm.min).max(RATE_LIMITS.perKm.max),
           perMin: z.number().min(RATE_LIMITS.perMin.min).max(RATE_LIMITS.perMin.max),
           auto: z.boolean(),
+          // ₹ per litre (kg, kWh): CNG and electricity are set here; petrol and diesel are read automatically.
+          prices: z
+            .object(Object.fromEntries(FUEL_TYPES.map((f) => [f, z.number().min(PRICE_RANGE[f].min).max(PRICE_RANGE[f].max)])) as Record<(typeof FUEL_TYPES)[number], z.ZodNumber>)
+            .partial(),
         })
         .partial(),
       req.body,
     )
-    setFareRates(p)
+    const { prices, ...rates } = p
+    if (prices) setFuelPrices(prices)
+    setFareRates(rates)
     return fareRatesReport()
   }),
 )
@@ -2041,7 +2077,14 @@ api.post(
 
 function fareRatesReport() {
   const fuel = fuelPrice()
-  return { rates: fareRates(), limits: RATE_LIMITS, auto: perSeatKmAuto(), fuel: { ...fuel, kmPerLitre: KM_PER_LITRE, people: PEOPLE, perSeatKm: perSeatKmFromPetrol(fuel.petrol) } }
+  return {
+    rates: fareRates(),
+    limits: RATE_LIMITS,
+    auto: perSeatKmAuto(),
+    fuel: { ...fuel, kmPerLitre: KM_PER_LITRE, people: PEOPLE, perSeatKm: perSeatKmFromPetrol(fuel.petrol) },
+    // Every fuel: its price, typical city mileage, ₹ per km per seat and CO₂ per km; and what the admin may set.
+    fuels: FUEL_TYPES.map((f) => ({ ...fuelCost(f), auto: FUELS[f].auto, priceRange: PRICE_RANGE[f] })),
+  }
 }
 
 api.post(

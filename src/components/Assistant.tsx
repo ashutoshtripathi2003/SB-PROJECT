@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bot, Phone, Send, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { defaultQuery, useSearch, withInstant } from '@/state/search'
 import { ApiError, assistant, type AssistantAction } from '@/services/api'
 
@@ -18,6 +18,14 @@ export function Assistant() {
   const nav = useNavigate()
   const search = useSearch()
   const [open, setOpen] = useState(false)
+  // Map screens keep their own sheet clear: there the assistant opens from a button in the top bar.
+  const { pathname } = useLocation()
+  const onMap = /^\/(home|find|ride\/|offer|drive\/|live\/)/.test(pathname)
+  useEffect(() => {
+    const show = () => setOpen(true)
+    window.addEventListener('ridesync:assistant', show)
+    return () => window.removeEventListener('ridesync:assistant', show)
+  }, [])
   const [msgs, setMsgs] = useState<Msg[]>([HELLO])
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -143,7 +151,7 @@ export function Assistant() {
           </motion.section>
         )}
       </AnimatePresence>
-      {!open && (
+      {!open && !onMap && (
         <button type="button" className="assistant-fab" aria-label="Open RideSync Assistant" onClick={() => setOpen(true)}>
           <Bot />
         </button>

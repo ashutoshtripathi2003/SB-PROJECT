@@ -12,14 +12,18 @@ import '../widgets/motion.dart';
 import '../widgets/ride_card.dart';
 import '../widgets/ride_map.dart';
 import 'drive.dart';
+import 'find.dart';
 import 'notifications.dart';
 import 'profile.dart';
 import 'trip.dart';
 
 /// Home: the map of rides leaving soon, with "Where to?" on a sheet — like a ride app.
 class HomeTab extends StatelessWidget {
-  const HomeTab({super.key, required this.onFind});
+  const HomeTab({super.key, required this.onFind, this.onAssistant});
   final VoidCallback onFind;
+
+  /// Opens the RideSync Assistant (its button lives in the top bar here, not over the sheet).
+  final VoidCallback? onAssistant;
 
   String _greeting() {
     final h = DateTime.now().hour;
@@ -44,6 +48,7 @@ class HomeTab extends StatelessWidget {
           showBack: false,
           title: Image.asset('assets/ridesync-logo.png', height: 22),
           topActions: [
+            if (onAssistant != null) FloatingMapButton(icon: Icons.smart_toy_outlined, onTap: onAssistant!),
             FloatingMapButton(icon: Icons.notifications_none_rounded, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
           ],
           map: (pad) => RideMap(
@@ -89,7 +94,10 @@ class HomeTab extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
+            // One tap to see rides: to campus in the morning, home from campus later in the day.
+            _Shortcuts(user: user),
+            const SizedBox(height: 12),
             // One primary action (where to?) and the driver's option right under it.
             SizedBox(
               width: double.infinity,
@@ -170,6 +178,61 @@ class HomeTab extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+const _shortcutIds = ['thane', 'dadar', 'kurla', 'ghatkopar', 'vashi', 'andheri'];
+
+class _Shortcuts extends StatelessWidget {
+  const _Shortcuts({required this.user});
+  final User user;
+
+  @override
+  Widget build(BuildContext context) {
+    final toCampus = DateTime.now().hour < 12;
+    final places = [for (final id in _shortcutIds) popularPlaces.firstWhere((p) => p.id == id)];
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      childAspectRatio: 3.1,
+      padding: EdgeInsets.zero,
+      children: [
+        for (final p in places)
+          Material(
+            color: RS.surface,
+            borderRadius: BorderRadius.circular(RS.radiusLg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(RS.radiusLg),
+              onTap: () {
+                final q = SearchQuery(
+                  pickup: toCampus ? p : campus,
+                  drop: toCampus ? campus : p,
+                  at: DateTime.now().add(const Duration(minutes: 15)),
+                  preferences: user.preferences.where((x) => x != 'music_ok' && x != 'ac').toList(),
+                );
+                Navigator.push(context, MaterialPageRoute(builder: (_) => ResultsScreen(query: q)));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(RS.radiusLg), border: Border.all(color: RS.line)),
+                child: Row(children: [
+                  const CircleAvatar(radius: 15, backgroundColor: RS.sunken, child: Icon(Icons.place_outlined, size: 16, color: RS.ink700)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      Text(toCampus ? '→ ${campus.name}' : 'from ${campus.name}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: RS.ink500, fontSize: 11.5)),
+                    ]),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

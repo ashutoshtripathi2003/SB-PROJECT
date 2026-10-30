@@ -353,8 +353,6 @@ class _TripView extends StatelessWidget {
   final VoidCallback? onToggleShare;
   final ({int minutes, String? traffic, int delay, List<LatLngPoint> coords, List<TrafficSegment> segments})? liveEta;
 
-  static const _steps = ['pending', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'];
-
   @override
   Widget build(BuildContext context) {
     final b = detail.booking;
@@ -363,7 +361,6 @@ class _TripView extends StatelessWidget {
     final phone = detail.isRider ? detail.driverPhone : detail.riderPhone;
     final live = const ['driver_arriving', 'driver_arrived', 'in_progress'].contains(b.status);
     final carPoint = car == null ? null : LatLngPoint(car!.lat, car!.lng);
-    final stepIndex = _steps.indexOf(b.status == 'accepted' ? 'pending' : b.status);
     final eta = carPoint == null
         ? null
         : switch (b.status) {
@@ -414,7 +411,7 @@ class _TripView extends StatelessWidget {
               if (live) const Padding(padding: EdgeInsets.only(top: 4, right: 4), child: LiveDot()),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(eta != null ? (b.status == 'driver_arriving' ? 'Arriving in $eta min' : '$eta min to ${b.drop.name}') : (bookingStatusLabel[b.status] ?? b.status), style: RS.heading(22)),
+                  Text(eta != null ? (b.status == 'driver_arriving' ? 'Arriving in $eta min' : '$eta min to ${b.drop.name}') : _title(b, detail), style: RS.heading(22)),
                   const SizedBox(height: 4),
                   Text(_subtitle(b, ride, detail), style: const TextStyle(color: RS.ink500, height: 1.4)),
                   if (detail.isRider && b.status == 'driver_arrived' && b.arrivedAt != null) ...[
@@ -441,61 +438,42 @@ class _TripView extends StatelessWidget {
             ],
           ),
         ),
-        if (b.isActive && stepIndex >= 0) ...[
-          const SizedBox(height: 14),
-          Row(children: [
-            for (var i = 0; i < _steps.length; i++)
-              Expanded(
-                child: TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: i <= stepIndex ? 1 : 0),
-                  duration: Duration(milliseconds: 400 + i * 80),
-                  builder: (_, v, _) => Container(
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    decoration: BoxDecoration(color: Color.lerp(RS.sunken, RS.primary, v), borderRadius: BorderRadius.circular(9)),
-                  ),
-                ),
-              ),
-          ]),
-        ],
+        if (detail.isRider && b.isActive) ...[const SizedBox(height: 14), StepTracker(status: b.status)],
       ]),
       children: [
         if (detail.isRider && share != 'off') ...[const SizedBox(height: 12), RiderLiveBar(state: share, driver: detail.driver.firstName, onToggle: onToggleShare)],
         if (live && carPoint == null && detail.isRider) ...[const SizedBox(height: 12), const Notice('Waiting for the driver’s location… it appears once their app shares GPS.')],
         if (detail.isRider && detail.ridePin != null) ...[const SizedBox(height: 14), FadeSlideIn(child: RidePinCard(pin: detail.ridePin!))],
-        if (detail.isRider && const ['confirmed', 'driver_arriving', 'driver_arrived'].contains(b.status)) ...[
-          const SizedBox(height: 14),
-          Panel(
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(color: RS.ink900, borderRadius: BorderRadius.circular(8)),
-                child: Text(detail.vehicle.plate, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 1)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Text(detail.vehicle.title, style: const TextStyle(fontWeight: FontWeight.w600))),
-              const Icon(Icons.directions_car_filled_rounded, color: RS.primary),
-            ]),
-          ),
-        ],
         const SizedBox(height: 12),
         Panel(
           child: Column(children: [
-            DriverRow(driver: other, vehicle: detail.isRider ? detail.vehicle : null),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(bookingId: b.id, other: other))),
-                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                  label: const Text('Message'),
+            DriverRow(
+              driver: other,
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                _RoundAction(
+                  icon: Icons.chat_bubble_rounded,
+                  tooltip: 'Message ${other.firstName}',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(bookingId: b.id, other: other))),
                 ),
-              ),
-              if (phone != null) ...[
-                const SizedBox(width: 10),
-                Expanded(child: OutlinedButton.icon(onPressed: () => openUrl(context, 'tel:+91$phone'), icon: const Icon(Icons.call_outlined, size: 18), label: const Text('Call'))),
-              ],
-            ]),
+                if (phone != null) ...[const SizedBox(width: 8), _RoundAction(icon: Icons.call_rounded, tooltip: 'Call ${other.firstName}', call: true, onTap: () => openUrl(context, 'tel:+91$phone'))],
+              ]),
+            ),
+            if (detail.isRider) ...[
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(detail.vehicle.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(switch (detail.vehicle.fuel) { 'ev' => 'Electric', 'cng' => 'CNG', final f => '${f[0].toUpperCase()}${f.substring(1)}' }, style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+                  ]),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: Colors.white, border: Border.all(color: RS.ink900, width: 1.6), borderRadius: BorderRadius.circular(8)),
+                  child: Text(detail.vehicle.plate, style: const TextStyle(fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                ),
+              ]),
+            ],
           ]),
         ),
         const SizedBox(height: 12),
@@ -507,10 +485,11 @@ class _TripView extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${money(b.fare)} · ${b.seats} seat${b.seats == 1 ? '' : 's'}${b.isShare ? (b.fareFinal ? ' · final price' : ' · your price') : ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text(b.isShare ? (b.fareFinal ? 'Your final price' : 'Your price') : 'Cost share', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+                Text(money(b.fare), style: RS.heading(26)),
                 Text(paymentLabel(b.paymentMethod, b.paymentStatus), style: const TextStyle(color: RS.ink500, fontSize: 13)),
                 if (b.isShare && !b.fareFinal)
-                  Text('Never goes up · drops if more riders join, or when the trip starts if traffic is lighter${b.fare < b.fareMax! ? ' · booked at ${money(b.fareMax!)}' : ''}', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
+                  Text('Never goes up · drops if more riders join${b.fare < b.fareMax! ? ' (booked at ${money(b.fareMax!)})' : ''}', style: const TextStyle(color: RS.success, fontSize: 12.5, fontWeight: FontWeight.w600)),
                 if (b.settleDue != 0)
                   Text(b.settleDue < 0 ? 'The driver returns ${money(-b.settleDue)} to you' : 'Pay the driver ${money(b.settleDue)} more', style: const TextStyle(color: RS.warning, fontSize: 12.5, fontWeight: FontWeight.w600)),
                 if (b.fareFinal && b.settleDue == 0 && b.paidAmount != null && b.paidAmount! > b.fare)
@@ -524,22 +503,30 @@ class _TripView extends StatelessWidget {
         ..._actions(context, detail),
         const SizedBox(height: 8),
         if (canShareLive) ...[
-          OutlinedButton.icon(onPressed: () => showShareTripSheet(context, b.id), icon: const Icon(Icons.share_location_rounded, size: 18), label: const Text('Share trip')),
+          OutlinedButton.icon(onPressed: () => showShareTripSheet(context, b.id), icon: const Icon(Icons.share_location_rounded, size: 18), label: const Text('Share trip live')),
           const SizedBox(height: 4),
         ],
-        TextButton.icon(onPressed: () => shareRide(context, ride, detail.driver.name), icon: const Icon(Icons.ios_share_rounded, size: 18), label: const Text('Share trip details')),
       ],
     );
   }
 
+  String _title(Booking b, BookingDetail d) => switch (b.status) {
+        'pending' => 'Waiting for ${d.driver.firstName}',
+        'accepted' => '${d.driver.firstName} accepted!',
+        'confirmed' => 'Seat confirmed',
+        _ => bookingStatusLabel[b.status] ?? b.status,
+      };
+
   String _subtitle(Booking b, Ride ride, BookingDetail d) => switch (b.status) {
-        'pending' => '${d.driver.firstName} will accept or decline soon. You’ll get a notification.',
-        'accepted' => '${d.driver.firstName} accepted! Choose how you’ll pay to confirm your seat.',
-        'confirmed' => 'Be at ${b.pickup.name} by ${timeOf(ride.departAt)}. You can track the car here once the ride starts.',
+        'pending' => 'Your request is sent. You’ll hear a chime the moment they accept.',
+        'accepted' => 'One last step: confirm your seat by choosing how you’ll pay.',
+        'confirmed' => 'Pickup at ${b.pickup.name} · ${when(ride.departAt)}. Track the car here once the ride starts.',
         'driver_arriving' => '${d.driver.firstName} is on the way to ${b.pickup.name}.',
         'driver_arrived' => '${d.driver.firstName} is at ${b.pickup.name}. Look for the ${d.vehicle.title} (${d.vehicle.plate}).',
         'in_progress' => 'On the way to ${b.drop.name}. Enjoy the ride!',
-        'completed' => 'Thanks for sharing the ride — you saved money and CO₂.',
+        'completed' => b.co2Kg != null && b.co2Kg! > 0
+            ? 'Thanks for sharing the ride — ${b.riderKm!.toStringAsFixed(1)} km shared saved about ${b.co2Kg!.toStringAsFixed(1)} kg of CO₂.'
+            : 'Thanks for sharing the ride — you saved money and CO₂.',
         'rejected' => 'The driver couldn’t take this request. Try another match.',
         'cancelled' => b.cancelReason ?? 'This booking was cancelled.',
         _ => '',
@@ -552,12 +539,16 @@ class _TripView extends StatelessWidget {
     if (d.isRider) {
       final canPay = const ['accepted', 'confirmed', 'driver_arriving', 'driver_arrived', 'in_progress', 'completed'].contains(b.status) && !b.isPaid && b.paymentStatus != 'refunded';
       if (canPay && !(b.paymentMethod == 'cash' && b.status != 'accepted')) {
-        out.add(LoadingButton(label: b.status == 'accepted' ? 'Confirm seat & choose payment' : 'Pay ${money(b.fare)}', icon: Icons.payments, onPressed: () => showPaySheet(context, d)));
+        out.add(LoadingButton(label: b.status == 'accepted' ? 'Confirm seat · ${money(b.fare)}' : 'Pay ${money(b.fare)}', icon: Icons.payments, onPressed: () => showPaySheet(context, d)));
       }
       if (b.status == 'completed' && b.riderRating == null) out.add(LoadingButton(label: 'Rate ${d.driver.firstName}', icon: Icons.star_rounded, onPressed: () => showRateSheet(context, b.id, d.driver.firstName, photo: d.driver.photo)));
       if (const ['pending', 'accepted', 'confirmed'].contains(b.status)) {
-        out.add(const SizedBox(height: 10));
-        out.add(LoadingButton(label: 'Cancel booking', secondary: true, danger: true, onPressed: () => _cancel(context, () => api.cancelBooking(b.id))));
+        out.add(const SizedBox(height: 4));
+        out.add(TextButton(
+          onPressed: () => _cancel(context, () => api.cancelBooking(b.id)),
+          style: TextButton.styleFrom(foregroundColor: RS.danger),
+          child: Text(b.status == 'pending' ? 'Withdraw request' : b.status == 'accepted' ? 'Cancel request' : 'Cancel seat'),
+        ));
       }
     } else {
       out.add(LoadingButton(label: 'Open ride controls', icon: Icons.directions_car, onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriveScreen(rideId: d.ride.id)))));
@@ -901,4 +892,65 @@ void showRateSheet(BuildContext context, String bookingId, String name, {String?
       ),
     ),
   );
+}
+
+/// A round Message / Call button, like Uber's driver card.
+class _RoundAction extends StatelessWidget {
+  const _RoundAction({required this.icon, required this.tooltip, required this.onTap, this.call = false});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool call;
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: tooltip,
+        child: Material(
+          color: call ? RS.success50 : RS.primary50,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(width: 44, height: 44, child: Icon(icon, size: 20, color: call ? RS.success : RS.primary)),
+          ),
+        ),
+      );
+}
+
+/// Where the booking is: Requested → Accepted → Seat confirmed → On the way.
+class StepTracker extends StatelessWidget {
+  const StepTracker({super.key, required this.status});
+  final String status;
+  static const _labels = ['Requested', 'Accepted', 'Seat confirmed', 'On the way'];
+  int get _at => switch (status) {
+        'pending' => 0,
+        'accepted' => 1,
+        'confirmed' => 2,
+        'driver_arriving' || 'driver_arrived' || 'in_progress' => 3,
+        _ => 4,
+      };
+  @override
+  Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        for (var i = 0; i < _labels.length; i++)
+          Expanded(
+            child: Column(children: [
+              Row(children: [
+                Expanded(child: Container(height: 2, color: i == 0 ? Colors.transparent : (i <= _at ? RS.primary : RS.line))),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < _at ? RS.primary : RS.surface,
+                    border: Border.all(color: i <= _at ? RS.primary : RS.line, width: i == _at ? 6 : 2),
+                  ),
+                  child: i < _at ? const Icon(Icons.check_rounded, size: 13, color: Colors.white) : null,
+                ),
+                Expanded(child: Container(height: 2, color: i == _labels.length - 1 ? Colors.transparent : (i < _at ? RS.primary : RS.line))),
+              ]),
+              const SizedBox(height: 6),
+              Text(_labels[i], textAlign: TextAlign.center, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: i <= _at ? RS.ink900 : RS.ink400)),
+            ]),
+          ),
+      ]);
 }

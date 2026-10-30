@@ -9,7 +9,7 @@ import { useConfig } from '@/services/api'
  * Settings and the Android app. Written to match what the server actually stores and does;
  * update both when the data or features change.
  */
-export const LEGAL_UPDATED = '24 October 2026'
+export const LEGAL_UPDATED = '29 October 2026'
 
 function Contact() {
   const cfg = useConfig().data
@@ -56,14 +56,16 @@ export function PrivacyPolicy() {
       <ul>
         <li>
           <b>Account:</b> your college email address, name, mobile number, student ID, programme and gender, and — only if you add them — a profile
-          photo, UPI ID, ride preferences and emergency contacts.
+          photo, UPI ID, ride preferences, emergency contacts and how you usually travelled to college (used only to estimate the CO₂ your shared rides
+          save).
         </li>
         <li>
           <b>Student ID verification (optional):</b> a photo of your college ID card and the name and ID number read from it automatically (OCR), so an
           administrator can verify you.
         </li>
         <li>
-          <b>Drivers:</b> car make, model, colour, number plate, seats and fuel type.
+          <b>Drivers:</b> car make, model, colour, number plate, seats, fuel type and — only if you add it — the car’s mileage (used for the suggested
+          seat price).
         </li>
         <li>
           <b>Rides and bookings:</b> routes, pickup and drop points, times, seats, prices, booking status, cancellations and ratings.
@@ -211,8 +213,8 @@ export function TermsOfUse() {
 
       <h2>3. Cost sharing, not business</h2>
       <p>
-        Prices are meant only to share the cost of the trip. RideSync suggests a price per seat from the distance and the petrol price, and drivers may
-        adjust it within the limits shown in the app. Drivers must not use RideSync to make a profit or to run a commercial taxi service. RideSync does
+        Prices are meant only to share the cost of the trip. RideSync works out each rider’s share of the trip’s real fuel, toll and parking cost; drivers do not set
+        their own price. Drivers must not use RideSync to make a profit or to run a commercial taxi service. RideSync does
         not currently charge a platform fee; if that changes, we will tell you before it applies.
       </p>
 

@@ -254,6 +254,14 @@ export function RideDetails() {
                 {seatsLeft} left <Seats total={ride.seatsTotal} taken={ride.seatsBooked} />
               </span>
             </div>
+            {match?.meter && (
+              <div className="bill__row t-sm">
+                <span>Alone by auto / taxi</span>
+                <span className="t-muted">
+                  ≈ {money(match.meter.auto * query.seats)} / {money(match.meter.taxi * query.seats)}
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -298,7 +306,7 @@ export function RideDetails() {
             <div className="bill__row t-sm" style={{ color: 'var(--ink-500)' }}>
               <span>
                 {ride.fareMode === 'share'
-                  ? `The trip costs about ${money(ride.costTotal ?? 0)}, from its distance and time${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter. Paid after ${firstName(driver.name)} accepts.`
+                  ? `The trip costs the car about ${money(ride.costTotal ?? 0)}: its fuel for the distance and the time in traffic, plus any tolls${ride.costSummary ? ` (${ride.costSummary})` : ''}. It’s split equally among everyone in the car, ${firstName(driver.name)} included, by the km each person rides. The price includes a 10% cushion for traffic and never goes up: it drops as more riders join, and again when the trip starts if the live traffic is lighter. Paid after ${firstName(driver.name)} accepts.`
                   : `A fixed price set by ${firstName(driver.name)}, like BlaBlaCar (RideSync suggests it from the distance). It never changes; if you ride part of the way you pay for your part. Paid after ${firstName(driver.name)} accepts.`}
               </span>
             </div>

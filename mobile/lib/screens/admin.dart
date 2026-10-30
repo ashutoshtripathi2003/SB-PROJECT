@@ -284,7 +284,8 @@ class _OverviewTab extends StatelessWidget {
 }
 
 /// Fare rate: ₹ per km per seat (suggested price = route km × it). Automatic by default: it follows
-/// today's petrol price (÷ 15 km/L ÷ 4 people); the admin can type their own instead, and switch back.
+/// each car's fuel price (÷ its km per litre / kg / kWh in city traffic ÷ 4 people); the admin can type their own
+/// instead, and switch back. CNG and electricity prices are set on the website's admin page.
 class _FareRates extends StatefulWidget {
   const _FareRates();
   @override
@@ -332,7 +333,7 @@ class _FareRatesState extends State<_FareRates> {
         if (mounted) setState(() => _msg = r['refreshed'] == true ? 'Read today’s petrol price: ₹$petrol a litre.' : 'Couldn’t reach the fuel-price websites; still using the last price.');
       } else {
         _show(await api.setFareRates(kind == 'save' ? {'perSeatKm': value} : {'auto': true}));
-        if (mounted) setState(() => _msg = kind == 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow the petrol price.');
+        if (mounted) setState(() => _msg = kind == 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow each car’s fuel price.');
       }
     } catch (e) {
       if (mounted) setState(() => _msg = errorText(e));
@@ -358,26 +359,35 @@ class _FareRatesState extends State<_FareRates> {
           if (r != null && fuel != null) ...[
             const SizedBox(height: 10),
             Row(children: [
-              const Expanded(child: Text('Price per km per seat', style: TextStyle(color: RS.ink700))),
+              const Expanded(child: Text('Price per km per seat (typical petrol car)', style: TextStyle(color: RS.ink700))),
               Pill(r['auto'] == true ? 'Automatic' : 'Set by admin'),
               const SizedBox(width: 8),
               Text('₹$rate', style: const TextStyle(fontWeight: FontWeight.w600)),
             ]),
             const SizedBox(height: 6),
             Text(
-              'Petrol today: ₹${fuel['petrol']} a litre (${fuel['source']}$at). ₹${fuel['petrol']} ÷ ${fuel['kmPerLitre']} km/L ÷ ${fuel['people']} people = ₹${fuel['perSeatKm']} per km per seat. The server reads it every 6 hours.',
+              'Each car is priced from its own fuel: price ÷ km per unit in city traffic (the driver’s own figure if given) ÷ ${fuel['people']} people. Petrol and diesel are read every 6 hours (${fuel['source']}$at); CNG and electricity are set on the website.',
               style: const TextStyle(color: RS.ink500, fontSize: 12.5, height: 1.35),
             ),
+            const SizedBox(height: 6),
+            for (final f in ((r['fuels'] as List?) ?? const []).cast<Map>())
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(children: [
+                  Expanded(child: Text('${f['label']}  ₹${f['price']}/${f['unit']} ÷ ${f['kmPerUnit']} km', style: const TextStyle(color: RS.ink700, fontSize: 13))),
+                  Text('₹${f['perSeatKm']}/km · ${f['co2KgPerKm']} kg CO₂', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ]),
+              ),
             const SizedBox(height: 4),
             Text('Example: a 25 km ride is suggested at ₹$example a seat.', style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
             const SizedBox(height: 8),
             Wrap(spacing: 8, runSpacing: 4, children: [
-              OutlinedButton(onPressed: _busy == null ? () => _act('refresh') : null, child: Text(_busy == 'refresh' ? 'Reading…' : 'Read petrol price now')),
+              OutlinedButton(onPressed: _busy == null ? () => _act('refresh') : null, child: Text(_busy == 'refresh' ? 'Reading…' : 'Read petrol & diesel prices')),
               if (r['auto'] != true) OutlinedButton(onPressed: _busy == null ? () => _act('auto') : null, child: Text(_busy == 'auto' ? 'Saving…' : 'Use automatic rate')),
             ]),
             const SizedBox(height: 8),
             Row(children: [
-              const Expanded(child: Text('Or set your own  ·  ₹/km\nStops following the petrol price until you switch back', style: TextStyle(color: RS.ink700, fontSize: 13))),
+              const Expanded(child: Text('Or set your own  ·  ₹/km\nUsed for every car until you switch back', style: TextStyle(color: RS.ink700, fontSize: 13))),
               SizedBox(width: 90, child: TextField(controller: _own, textAlign: TextAlign.right, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(isDense: true))),
             ]),
             const SizedBox(height: 12),

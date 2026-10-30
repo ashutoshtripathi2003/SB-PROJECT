@@ -92,7 +92,7 @@ in the Privacy Policy process data on our behalf, which Google does not count as
 | Personal info → Email address | Yes | Required | App functionality, Account management, Fraud prevention & security |
 | Personal info → Phone number | Yes | Required | App functionality, Account management |
 | Personal info → User IDs (student ID) | Yes | Required | Account management, Fraud prevention & security |
-| Personal info → Other info (gender, programme, emergency contacts) | Yes | Optional | App functionality |
+| Personal info → Other info (gender, programme, emergency contacts, usual way to college, car details and mileage) | Yes | Optional | App functionality |
 | Location → Precise location | Yes | Optional (permission) | App functionality (live trip, pickup) |
 | Location → Approximate location | Yes | Optional (permission) | App functionality |
 | Financial info → User payment info (UPI ID) | Yes | Optional | App functionality |

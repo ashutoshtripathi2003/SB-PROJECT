@@ -2,6 +2,7 @@ import request from 'supertest'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
+process.env.FARE_MODE = 'seat' // the BlaBlaCar-style price per seat
 process.env.DEV_LOGIN = 'true'
 process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
 process.env.OSRM_URL = 'http://127.0.0.1:9' // force the offline route estimate
@@ -83,12 +84,12 @@ describe('full ride between two devices', () => {
     const offer = { origin: campus, destination: malad, departAt, seats: 3, farePerSeat: 60, maxDetourKm: 3, preferences: ['no_smoking'] }
     expect((await driver.post('/api/rides').set(H).send(offer)).status).toBe(400)
     expect((await driver.put('/api/me/vehicle').set(H).send({ make: 'Honda', model: 'City', color: 'White', plate: 'MH01AB1234', seats: 3, fuel: 'petrol' })).status).toBe(200)
-    // BlaBlaCar-style: the driver's price per seat is kept within the range (at most 1.5 × distance × ₹1.85, the rate from the built-in petrol price),
+    // BlaBlaCar-style: the driver's price per seat is kept within the range (at most 1.5 × distance × ₹2.35, the rate from the built-in petrol price ÷ 11.8 km/L ÷ 4),
     // so ₹2000 is brought down to the top of the range.
     const pub = await driver.post('/api/rides').set(H).send({ ...offer, farePerSeat: 2000 })
     expect(pub.status).toBe(200)
     expect(pub.body.fareMode).toBeUndefined()
-    const suggested = Math.max(30, Math.round((pub.body.distanceKm * 1.85) / 5) * 5)
+    const suggested = Math.max(30, Math.round((pub.body.distanceKm * 2.35) / 5) * 5)
     expect(pub.body.farePerSeat).toBe(Math.max(suggested, Math.round((suggested * 1.5) / 5) * 5))
     const rideId = pub.body.id
 

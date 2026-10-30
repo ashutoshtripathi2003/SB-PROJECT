@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Banknote, Check, CircleX, Clock, MessageCircle, Phone, RefreshCw, SearchX, Star, X } from 'lucide-react'
+import { Check, CircleX, Clock, MessageCircle, Phone, RefreshCw, SearchX, Star, X } from 'lucide-react'
 import { useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { ConfirmDialog } from '@/components/Sheet'
@@ -8,7 +8,7 @@ import { Stops } from '@/components/Stops'
 import { TopBar } from '@/components/TopBar'
 import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
-import { Avatar, Badge, Button, Chip, Notice, Plate, Rating, RideCardSkeleton, VerifiedBadge } from '@/components/ui'
+import { Avatar, Badge, Button, Chip, Plate, Rating, RideCardSkeleton, VerifiedBadge, cx } from '@/components/ui'
 import { dayTime, firstName, money, plural, time } from '@/lib/format'
 import type { Booking, BookingStatus } from '@/lib/types'
 import { ApiError, Q, bookings, useQuery, type BookingDetail } from '@/services/api'
@@ -170,43 +170,44 @@ export function TripStatus() {
     nav(search.query ? '/find/results' : '/find')
   }
 
-  const hero = (() => {
+  const head = (() => {
     switch (booking.status) {
       case 'pending':
-        return (
-          <Hero
-            mark={
-              <div className="radar">
-                <span className="radar__ring" />
-                <span className="radar__ring" />
-                <span className="radar__ring" />
-                <Avatar name={driver.name} src={driver.photo} size="xl" />
-              </div>
-            }
-            title="Ride requested"
-            body={`Waiting for ${name} to accept. You’ll get a notification the moment they respond.`}
-          />
-        )
+        return {
+          mark: (
+            <div className="radar radar--sm">
+              <span className="radar__ring" />
+              <span className="radar__ring" />
+              <span className="radar__ring" />
+              <Avatar name={driver.name} src={driver.photo} size="lg" />
+            </div>
+          ),
+          title: `Waiting for ${name}`,
+          body: 'Your request is sent. You’ll hear a chime the moment they accept.',
+        }
       case 'accepted':
-        return <Hero mark={<SuccessMark />} title="Ride confirmed" body={`${name} accepted your request. Choose how you’ll pay to lock in your seat.`} />
+        return { mark: <SuccessMark />, title: `${name} accepted!`, body: 'One last step: confirm your seat by choosing how you’ll pay.' }
       case 'confirmed':
-        return <Hero mark={<SuccessMark />} title="You’re all set" body={`${name} will pick you up at ${booking.pickup.name}, ${dayTime(detail.ride.departAt).toLowerCase()}. You can track them live once they start.`} />
+        return { mark: <SuccessMark />, title: 'Seat confirmed', body: `Pickup at ${booking.pickup.name} · ${dayTime(detail.ride.departAt)}` }
       case 'rejected':
-        return <Hero mark={<div className="result-mark result-mark--error"><X /></div>} title={`${name} couldn’t take this ride`} body="This happens when plans change or seats fill up. You haven’t paid anything." />
+        return { mark: <div className="result-mark result-mark--error"><X /></div>, title: `${name} couldn’t take this ride`, body: 'Plans change or seats fill up. You haven’t paid anything.' }
       case 'cancelled':
-        return (
-          <Hero
-            mark={<div className="result-mark result-mark--error"><CircleX /></div>}
-            title="Ride cancelled"
-            body={`${booking.cancelledBy === 'rider' ? `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.` : `${booking.cancelReason ?? 'The ride was cancelled'}.`}${booking.paymentStatus === 'refunded' ? ' Your online payment has been refunded (5–7 working days).' : booking.paymentStatus === 'paid_online' ? ' Your online refund is being processed.' : booking.cancelledBy !== 'rider' && booking.paymentStatus !== 'unpaid' ? ` Ask ${name} to refund your UPI payment.` : ''}`}
-          />
-        )
+        return {
+          mark: <div className="result-mark result-mark--error"><CircleX /></div>,
+          title: 'Ride cancelled',
+          body: `${booking.cancelledBy === 'rider' ? `You cancelled this ride${booking.cancelReason ? ` · ${booking.cancelReason}` : ''}.` : `${booking.cancelReason ?? 'The ride was cancelled'}.`}${booking.paymentStatus === 'refunded' ? ' Your online payment has been refunded (5–7 working days).' : booking.paymentStatus === 'paid_online' ? ' Your online refund is being processed.' : booking.cancelledBy !== 'rider' && booking.paymentStatus !== 'unpaid' ? ` Ask ${name} to refund your UPI payment.` : ''}`,
+        }
       case 'completed':
-        return <Hero mark={<div className="result-mark result-mark--brand"><Check /></div>} title="Trip completed" body={`Thanks for riding with ${name}. You saved about ${(2.4 * booking.seats).toFixed(1)} kg of CO₂.`} />
+        return {
+          mark: <div className="result-mark result-mark--brand"><Check /></div>,
+          title: 'Trip completed',
+          body: booking.co2Kg ? `Thanks for riding with ${name}. Sharing ${booking.riderKm} km saved about ${booking.co2Kg.toFixed(1)} kg of CO₂.` : `Thanks for riding with ${name}.`,
+        }
       default:
         return null
     }
   })()
+  const canContact = ['accepted', 'confirmed'].includes(booking.status)
 
   const footer = (() => {
     switch (booking.status) {
@@ -218,34 +219,22 @@ export function TripStatus() {
         )
       case 'accepted':
         return (
-          <Button size="lg" block onClick={() => nav(`/pay/${booking.id}`)}>
-            Continue to Payment
-          </Button>
+          <div className="stack gap-2">
+            <Button size="lg" block onClick={() => nav(`/pay/${booking.id}`)}>
+              Confirm seat · {money(booking.fare)}
+            </Button>
+            <button type="button" className="link-quiet" onClick={() => setCancelOpen(true)}>
+              Cancel request
+            </button>
+          </div>
         )
       case 'confirmed':
         return (
           <div className="stack gap-2">
-            <div className="row gap-2">
-              <Button variant="secondary" block icon={<MessageCircle />} onClick={() => nav(`/chat/${booking.id}`)}>
-                Message {name}
-              </Button>
-              {detail.driverPhone && (
-                <a className="btn btn--secondary" href={`tel:+91${detail.driverPhone}`} aria-label={`Call ${name}`}>
-                  <span className="btn__label">
-                    <Phone />
-                  </span>
-                </a>
-              )}
-            </div>
             <ShareTripButton bookingId={booking.id} block />
-            {booking.paymentMethod === 'cash' && detail.driverUpiId && (
-              <Button variant="ghost" block icon={<Banknote />} onClick={() => nav(`/pay/${booking.id}`)}>
-                Pay by UPI instead
-              </Button>
-            )}
-            <Button variant="danger-ghost" block onClick={() => setCancelOpen(true)}>
+            <button type="button" className="link-quiet link-quiet--danger" onClick={() => setCancelOpen(true)}>
               Cancel seat
-            </Button>
+            </button>
           </div>
         )
       case 'rejected':
@@ -271,40 +260,33 @@ export function TripStatus() {
   })()
 
   return (
-    <div className="page">
-      <TopBar title={BOOKING_STATUS[booking.status].label} backTo="/rides" actions={<span className="topbar__spacer" />} />
-      <div className="page__content page__content--narrow">
-        <motion.div key={booking.status} initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.25, ease: [0.2, 0, 0, 1] }}>
-          {hero}
-        </motion.div>
-        {booking.status === 'pending' && (
-          <div className="progress progress--indeterminate" style={{ margin: '0 auto 24px', maxWidth: 200 }}>
-            <div className="progress__bar" />
-          </div>
+    <div className="page page--canvas">
+      <TopBar title="" backTo="/rides" actions={<span className="topbar__spacer" />} />
+      <div className="page__content page__content--narrow booking">
+        {head && (
+          <motion.div key={booking.status} className="booking-head" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25, ease: [0.2, 0, 0, 1] }}>
+            {head.mark}
+            <h1 className="t-h1">{head.title}</h1>
+            <p className="t-body t-muted">{head.body}</p>
+          </motion.div>
         )}
-        {booking.status === 'accepted' && (
-          <div style={{ marginBottom: 16 }}>
-            <Notice tone="info" icon={<Clock />}>
-              Pay to lock in your seat — online, by UPI to {name}, or in cash at pickup.
-            </Notice>
+        {!['rejected', 'cancelled'].includes(booking.status) && <StepTracker status={booking.status} />}
+        {shareMe.state !== 'off' && <RiderLiveBar driver={name} share={shareMe} />}
+        {detail.ridePin && booking.status === 'confirmed' && <RidePinCard pin={detail.ridePin} plate={detail.vehicle.plate} />}
+        <DriverCard detail={detail} contact={canContact} />
+        <div className="card-lite">
+          <Stops from={{ title: booking.pickup.name, subtitle: booking.pickup.area, time: time(detail.ride.departAt) }} to={{ title: booking.drop.name, subtitle: booking.drop.area }} />
+          <div className="row row--between t-sm t-muted" style={{ marginTop: 10 }}>
+            <span className="row gap-2">
+              <Clock size={15} />
+              {dayTime(detail.ride.departAt)}
+            </span>
+            <span>{plural(booking.seats, 'seat')}</span>
           </div>
-        )}
-        {shareMe.state !== 'off' && (
-          <div style={{ marginBottom: 12 }}>
-            <RiderLiveBar driver={name} share={shareMe} />
-          </div>
-        )}
-        {detail.ridePin && booking.status !== 'accepted' && (
-          <div style={{ marginBottom: 16 }}>
-            <RidePinCard pin={detail.ridePin} plate={detail.vehicle.plate} />
-          </div>
-        )}
-        <div className="page__sheet-lite">
-          <TripSummary detail={detail} />
         </div>
+        <PriceCard detail={detail} onPayUpi={booking.status === 'confirmed' && booking.paymentMethod === 'cash' && detail.driverUpiId ? () => nav(`/pay/${booking.id}`) : undefined} />
       </div>
       {footer && <div className="page__footer page__footer--narrow">{footer}</div>}
-
       <ConfirmDialog
         open={cancelOpen}
         title={booking.status === 'pending' ? 'Withdraw this request?' : 'Cancel your seat?'}
@@ -337,14 +319,114 @@ export function TripStatus() {
   )
 }
 
-function Hero({ mark, title, body }: { mark: React.ReactNode; title: string; body: string }) {
+const STEPS = ['Requested', 'Accepted', 'Seat confirmed', 'On the way'] as const
+const STEP_OF: Partial<Record<BookingStatus, number>> = { pending: 0, accepted: 1, confirmed: 2, driver_arriving: 3, driver_arrived: 3, in_progress: 3, completed: 4 }
+
+/** Where the booking is: Requested → Accepted → Seat confirmed → On the way. */
+export function StepTracker({ status }: { status: BookingStatus }) {
+  const at = STEP_OF[status] ?? 0
   return (
-    <div className="hero">
-      {mark}
-      <h2 className="t-h1">{title}</h2>
-      <p className="t-body t-muted" style={{ maxWidth: 340 }}>
-        {body}
-      </p>
+    <ol className="steps" aria-label="Booking progress">
+      {STEPS.map((label, i) => (
+        <li key={label} className={cx('steps__item', i < at && 'is-done', i === at && 'is-current')} aria-current={i === at ? 'step' : undefined}>
+          <span className="steps__dot">{i < at ? <Check size={12} strokeWidth={3} /> : null}</span>
+          <span className="steps__label">{label}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+/** The driver, their car and plate, and Call / Chat once they've accepted. */
+export function DriverCard({ detail, contact }: { detail: BookingDetail; contact?: boolean }) {
+  const nav = useNavigate()
+  const { driver, vehicle: v, booking } = detail
+  return (
+    <div className="card-lite driver-card">
+      <div className="row gap-3">
+        <Avatar name={driver.name} src={driver.photo} size="lg" verified={driver.verified} />
+        <div className="stack grow gap-1" style={{ minWidth: 0 }}>
+          <span className="row gap-1" style={{ minWidth: 0 }}>
+            <span className="t-h3 truncate">{driver.name}</span>
+            {driver.verified && <VerifiedBadge short />}
+          </span>
+          <Rating value={driver.rating} count={driver.ridesOffered} />
+        </div>
+        {contact && (
+          <div className="row gap-2">
+            <button type="button" className="round-action" aria-label={`Message ${firstName(driver.name)}`} onClick={() => nav(`/chat/${booking.id}`)}>
+              <MessageCircle />
+            </button>
+            {detail.driverPhone && (
+              <a className="round-action round-action--call" href={`tel:+91${detail.driverPhone}`} aria-label={`Call ${firstName(driver.name)}`}>
+                <Phone />
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="vehicle-row">
+        <span className="stack grow">
+          <span className="t-body t-strong">
+            {v.color} {v.make} {v.model}
+          </span>
+          <span className="t-sm t-muted">{v.fuel === 'ev' ? 'Electric' : v.fuel === 'cng' ? 'CNG' : v.fuel[0].toUpperCase() + v.fuel.slice(1)}</span>
+        </span>
+        <Plate>{v.plate}</Plate>
+      </div>
+    </div>
+  )
+}
+
+/** The price, big; how it's worked out folded away. */
+export function PriceCard({ detail, onPayUpi }: { detail: BookingDetail; onPayUpi?: () => void }) {
+  const { booking, ride } = detail
+  const [open, setOpen] = useState(false)
+  const share = booking.fareMax != null
+  return (
+    <div className="card-lite price-card">
+      <div className="row row--between">
+        <span className="stack">
+          <span className="t-sm t-muted">{!share ? 'Cost share' : booking.fareFinal ? 'Your final price' : 'Your price'}</span>
+          <span className="price-card__amount tabular">{money(booking.fare)}</span>
+        </span>
+        <span className="stack" style={{ alignItems: 'flex-end', gap: 4 }}>
+          <span className="t-sm">{paymentLabel(booking)}</span>
+          {(booking.paymentStatus === 'received' || booking.paymentStatus === 'paid_online') && (
+            <Badge tone="success" icon={<Check />}>
+              Received
+            </Badge>
+          )}
+        </span>
+      </div>
+      {share && !booking.fareFinal && (
+        <p className="t-sm t-success" style={{ marginTop: 6 }}>
+          Never goes up · drops if more riders join{booking.fare < (booking.fareMax ?? 0) ? ` (booked at ${money(booking.fareMax!)})` : ''}
+        </p>
+      )}
+      {!!booking.settleDue && (
+        <p className="t-sm" style={{ marginTop: 6, color: 'var(--warning-600)' }}>
+          {booking.settleDue < 0 ? `The driver returns ${money(-booking.settleDue)} to you.` : `Pay the driver ${money(booking.settleDue)} more.`}
+        </p>
+      )}
+      <div className="row gap-3" style={{ marginTop: 10, flexWrap: 'wrap' }}>
+        {ride.costTotal != null && share && (
+          <button type="button" className="link-quiet" style={{ padding: 0 }} aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? 'Hide how it’s worked out' : 'How is this worked out?'}
+          </button>
+        )}
+        {onPayUpi && (
+          <button type="button" className="link-quiet" style={{ padding: 0 }} onClick={onPayUpi}>
+            Pay by UPI instead
+          </button>
+        )}
+      </div>
+      {open && (
+        <p className="t-sm t-muted" style={{ marginTop: 8 }}>
+          The trip costs the car {money(ride.costTotal ?? 0)}
+          {ride.costSummary ? ` (${ride.costSummary})` : ''}, shared equally by the km each person rides, the driver included. No platform fee.
+        </p>
+      )}
     </div>
   )
 }

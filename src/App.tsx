@@ -8,7 +8,7 @@ import { DesignSystem, StatesGallery } from './screens/design'
 import { DriverRide, OfferRide } from './screens/drive'
 import { FindRide, MatchResults } from './screens/find'
 import { Home } from './screens/home'
-import { ChatList, ChatThread, Notifications } from './screens/inbox'
+import { ChatList, ChatThread, Inbox, Notifications } from './screens/inbox'
 import { LiveRide } from './screens/live'
 import { Onboarding } from './screens/onboarding'
 import { Payment } from './screens/payment'
@@ -61,6 +61,7 @@ export function App() {
                 <Route path="/live/:bookingId" element={<LiveRide />} />
                 <Route path="/offer" element={<OfferRide />} />
                 <Route path="/drive/:rideId" element={<DriverRide />} />
+                <Route path="/inbox" element={<Inbox />} />
                 <Route path="/notifications" element={<Notifications />} />
                 <Route path="/chat" element={<ChatList />} />
                 <Route path="/chat/:bookingId" element={<ChatThread />} />

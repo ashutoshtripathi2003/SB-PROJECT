@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { play, type Sound } from '@/lib/sound'
 
 /**
  * Full-screen moments for the actions that matter: ride offered, request sent, ride accepted,
@@ -8,7 +9,19 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
  */
 
 export type CelebrateKind = 'published' | 'sent' | 'accepted' | 'confirmed' | 'started' | 'completed' | 'cancelled' | 'declined'
-export type Celebration = { kind: CelebrateKind; title: string; body?: string; action?: { label: string; onClick: () => void }; ms?: number }
+export type Celebration = { kind: CelebrateKind; title: string; body?: string; action?: { label: string; onClick: () => void }; ms?: number; sound?: Sound }
+
+/** Each moment's sound (src/lib/sound.ts); a moment can ask for another, e.g. a driver's new request. */
+const SOUND: Record<CelebrateKind, Sound> = {
+  published: 'sent',
+  sent: 'sent',
+  accepted: 'success',
+  confirmed: 'success',
+  started: 'start',
+  completed: 'success',
+  cancelled: 'cancel',
+  declined: 'cancel',
+}
 
 const Ctx = createContext<(c: Celebration) => void>(() => {})
 export const useCelebrate = () => useContext(Ctx)
@@ -23,6 +36,7 @@ export function CelebrateProvider({ children }: { children: ReactNode }) {
   const show = useCallback((next: Celebration) => {
     window.clearTimeout(timer.current)
     setC(next)
+    play(next.sound ?? SOUND[next.kind])
     const ms = next.ms ?? (next.action ? 0 : next.kind === 'sent' ? 3200 : 2400)
     if (ms > 0) timer.current = window.setTimeout(() => setC(null), ms)
   }, [])

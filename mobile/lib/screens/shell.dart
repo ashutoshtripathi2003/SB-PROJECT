@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../api/models.dart';
 import '../state/session.dart';
 import '../theme.dart';
+import '../util/sound.dart';
 import '../widgets/motion.dart';
 import 'assistant.dart';
 import 'find.dart';
@@ -72,12 +73,21 @@ class _HomeShellState extends State<HomeShell> {
     if (moment != null) {
       final link = n.link;
       showMoment(context, moment.$1, moment.$2,
+          sound: n.kind == 'request' ? Sound.request : null,
           subtitle: n.kind == 'cancelled' ? n.body : '${n.title}. ${n.body}',
           actionLabel: link == null && n.kind != 'rejected' ? null : moment.$3,
           onAction: () => n.kind == 'rejected' || link == null ? goTo(1) : openLink(context, link));
       _loadBadges();
       return;
     }
+    // A sound for the updates that matter; the banner says what happened.
+    final sound = switch (n.kind) {
+      'chat' || 'match' => Sound.message,
+      'arriving' => Sound.arrived,
+      'payment' => Sound.success,
+      _ => null,
+    };
+    if (sound != null) Sounds.play(sound);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
@@ -102,25 +112,21 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = [HomeTab(onFind: () => goTo(1)), const FindTab(), const RidesTab(), const InboxTab(), const ProfileTab()];
+    final pages = [HomeTab(onFind: () => goTo(1), onAssistant: () => showAssistant(context, history: _assistant, onTab: goTo)), const FindTab(), const RidesTab(), const InboxTab(), const ProfileTab()];
     final student = context.select<Session, bool>((s) => s.user != null && !s.user!.adminOnly);
     return Scaffold(
       body: IndexedStack(index: _tab, children: pages),
-      floatingActionButton: !student
+      // The map tabs (Home, Find) keep their sheet clear: Home opens the assistant from its top bar instead.
+      floatingActionButton: !student || _tab < 2
           ? null
-          : AnimatedPadding(
-              // Above the "Find a ride" button pinned to the bottom of the Find tab.
-              padding: EdgeInsets.only(bottom: _tab == 1 ? 76 : 0),
-              duration: const Duration(milliseconds: 200),
-              child: FloatingActionButton(
-                heroTag: 'assistant',
-                tooltip: 'RideSync Assistant',
-                backgroundColor: RS.primary,
-                foregroundColor: Colors.white,
-                shape: const CircleBorder(),
-                onPressed: () => showAssistant(context, history: _assistant, onTab: goTo),
-                child: const Icon(Icons.smart_toy_outlined, size: 26),
-              ),
+          : FloatingActionButton.small(
+              heroTag: 'assistant',
+              tooltip: 'RideSync Assistant',
+              backgroundColor: RS.primary,
+              foregroundColor: Colors.white,
+              shape: const CircleBorder(),
+              onPressed: () => showAssistant(context, history: _assistant, onTab: goTo),
+              child: const Icon(Icons.smart_toy_outlined, size: 22),
             ),
       bottomNavigationBar: DecoratedBox(
         decoration: const BoxDecoration(border: Border(top: BorderSide(color: RS.line))),

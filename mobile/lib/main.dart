@@ -8,10 +8,12 @@ import 'screens/onboarding.dart';
 import 'screens/shell.dart';
 import 'state/session.dart';
 import 'theme.dart';
+import 'util/sound.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark));
+  Sounds.load();
   runApp(ChangeNotifierProvider(create: (_) => Session()..init(), child: const RideSyncApp()));
 }
 

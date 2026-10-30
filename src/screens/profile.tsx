@@ -28,14 +28,25 @@ import { ConfirmDialog, ModalSheet } from '@/components/Sheet'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { PhotoPicker } from '@/components/PhotoPicker'
-import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, VerifiedBadge } from '@/components/ui'
+import { Avatar, Button, Chip, Field, ListRow, Notice, Plate, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { PREFERENCE_LABEL } from '@/lib/matching'
-import type { CommuteMode, Gender, RidePreference } from '@/lib/types'
+import type { CommuteMode, Gender, RidePreference, TravelMode } from '@/lib/types'
 import { validatePhone, validateStudentId } from '@/lib/validation'
 import { Page } from '@/layouts/Page'
 import { ApiError, auth, deleteAccount, notificationPermission, removeVehicle, requestNotificationPermission, saveVehicle, updateMe, useMe } from '@/services/api'
 import { IdVerifyCard } from '@/components/Safety'
+import { play, setSoundsOn, soundsOn } from '@/lib/sound'
 import { PREF_OPTIONS } from './find'
+
+const TRAVEL_OPTIONS: { value: TravelMode; label: string }[] = [
+  { value: 'car', label: 'My own car' },
+  { value: 'cab', label: 'Cab' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'bike', label: 'Bike / scooter' },
+  { value: 'train', label: 'Local train' },
+  { value: 'bus', label: 'Bus' },
+  { value: 'walk', label: 'Walk / cycle' },
+]
 
 export function Profile() {
   const { user } = useMe()
@@ -82,7 +93,7 @@ export function Profile() {
 
         {u.co2SavedKg > 0 && (
           <Notice tone="success" icon={<Leaf />}>
-            Sharing rides has saved about {Math.round(u.co2SavedKg)} kg of CO₂ — what {Math.max(1, Math.round(u.co2SavedKg / 21))} {Math.max(1, Math.round(u.co2SavedKg / 21)) === 1 ? 'tree absorbs' : 'trees absorb'} in a year.
+            Sharing rides has saved about {Math.round(u.co2SavedKg)} kg of CO₂ (estimated from each trip’s distance and what it replaced) — what {Math.max(1, Math.round(u.co2SavedKg / 21))} {Math.max(1, Math.round(u.co2SavedKg / 21)) === 1 ? 'tree absorbs' : 'trees absorb'} in a year.
           </Notice>
         )}
 
@@ -296,6 +307,21 @@ function Preferences() {
         <section className="stack gap-3">
           <div className="stack gap-1">
             <h2 className="section__title" style={{ padding: 0 }}>
+              How did you usually get to college?
+            </h2>
+            <span className="t-sm t-muted">Before RideSync. Your CO₂ saved counts only what sharing really replaces: a car, cab, auto or bike trip — not a train or bus.</span>
+          </div>
+          <div className="row wrap gap-2">
+            {TRAVEL_OPTIONS.map((o) => (
+              <Chip key={o.value} selected={u.usualMode === o.value} onClick={() => set({ usualMode: o.value })}>
+                {o.label}
+              </Chip>
+            ))}
+          </div>
+        </section>
+        <section className="stack gap-3">
+          <div className="stack gap-1">
+            <h2 className="section__title" style={{ padding: 0 }}>
               Ride preferences
             </h2>
             <span className="t-sm t-muted">Applied by default when you search or offer. AI matching scores rides higher when they fit.</span>
@@ -357,6 +383,7 @@ function PaymentMethods() {
 
 function NotificationSettings() {
   const [perm, setPerm] = useState(notificationPermission())
+  const [sounds, setSounds] = useState(soundsOn())
   return (
     <Page title="Notifications" backTo="/profile" narrow>
       <div className="stack gap-6">
@@ -377,6 +404,21 @@ function NotificationSettings() {
         <div className="list">
           <ListRow title="Ride updates" subtitle="Requests, acceptances, arrivals, cancellations" trailing={<span className="t-sm t-muted">Always on</span>} />
           <ListRow title="Messages" subtitle="Chat from drivers and riders" trailing={<span className="t-sm t-muted">Always on</span>} />
+          <ListRow
+            title="Sounds and vibration"
+            subtitle="A chime when your seat is confirmed, a ring for new requests, a beep when your driver arrives"
+            trailing={
+              <Switch
+                checked={sounds}
+                label="Sounds and vibration"
+                onChange={(on) => {
+                  setSounds(on)
+                  setSoundsOn(on)
+                  if (on) play('success')
+                }}
+              />
+            }
+          />
         </div>
       </div>
     </Page>
@@ -468,7 +510,7 @@ function Safety() {
 }
 
 const FAQ = [
-  ['How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (about ₹1.85 per km at today’s petrol price; it follows the real petrol price automatically), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'],
+  ['How is the fare decided?', 'RideSync works out what the trip really costs the driver’s car: the fuel it burns at the speed traffic allows for that time (from TomTom’s traffic forecast — cars use more fuel per km in slow traffic, so no fixed mileage figure is used), plus what it burns in jams, plus any tolls or parking. That cost is split equally among everyone in the car, the driver included, by the km each person rides. You book at your share plus a 10% traffic cushion — the most you can ever pay — and it drops as more riders join, and again when the trip starts if traffic is lighter. There is no platform fee and no profit for the driver: it’s cost-sharing, usually a fraction of an auto fare.'],
   ['What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this ride?” on any ride to see the breakdown.'],
   ['What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'],
   ['Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'],

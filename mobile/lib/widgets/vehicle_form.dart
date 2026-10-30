@@ -19,7 +19,15 @@ class VehicleFormState extends State<VehicleForm> {
   late final _plate = TextEditingController(text: widget.initial?.plate);
   late int _seats = widget.initial?.seats ?? 3;
   late String _fuel = widget.initial?.fuel ?? 'petrol';
+  late String _body = widget.initial?.body ?? 'hatchback';
   Map<String, String?> _errors = {};
+
+  /// Car size (as on the server, src/lib/fuel.ts): with the fuel and the traffic speed it sets the trip's fuel use.
+  static const bodies = {
+    'hatchback': ('Hatchback', 'Swift, i20, Baleno, Tiago'),
+    'sedan': ('Sedan', 'City, Dzire, Verna, Nexon, Brezza'),
+    'suv': ('SUV / MUV', 'Creta, XUV700, Innova, Ertiga, Scorpio'),
+  };
 
   /// Validated JSON for PUT /me/vehicle, or null (errors are shown).
   Map<String, dynamic>? value() {
@@ -38,6 +46,7 @@ class VehicleFormState extends State<VehicleForm> {
       'plate': _plate.text.trim().toUpperCase(),
       'seats': _seats,
       'fuel': _fuel,
+      'body': _body,
     };
   }
 
@@ -104,6 +113,18 @@ class VehicleFormState extends State<VehicleForm> {
         showSelectedIcon: false,
         onSelectionChanged: (s) => setState(() => _fuel = s.first),
       ),
+      const SizedBox(height: 14),
+      const Text('Car type', style: TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      SegmentedButton<String>(
+        segments: [for (final e in bodies.entries) ButtonSegment(value: e.key, label: Text(e.value.$1))],
+        selected: {_body},
+        showSelectedIcon: false,
+        onSelectionChanged: (s) => setState(() => _body = s.first),
+      ),
+      const SizedBox(height: 6),
+      Text('${bodies[_body]!.$2}. With the fuel type and the live traffic, this sets the trip cost riders share — no mileage figure needed.',
+          style: const TextStyle(color: RS.ink500, fontSize: 12.5)),
     ],
   );
 }

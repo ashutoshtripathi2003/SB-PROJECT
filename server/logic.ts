@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { AppNotification, Booking, BookingStatus, NotificationKind, Place, PublicUser, Ride, User, Vehicle } from '../src/lib/types'
+import { BOOKING_CO2_SQL, co2SavedKg, type TravelMode } from './co2'
 import { all, one, run, type Row } from './db'
 import { emit, sync } from './events'
 import { env } from './env'
@@ -51,10 +52,15 @@ export function userStats(userId: string) {
   const riderCancels = Number(one<{ n: number }>(`SELECT COUNT(*) n FROM bookings WHERE rider_id = ? AND cancelled_by = 'rider' AND payment_method IS NOT NULL`, userId)?.n ?? 0)
   const done = offered + taken
   const completionRate = done + driverCancels + riderCancels === 0 ? 1 : done / (done + driverCancels + riderCancels)
-  const ridersCarried = Number(
-    one<{ n: number }>(`SELECT COALESCE(SUM(b.seats),0) n FROM bookings b JOIN rides r ON r.id = b.ride_id WHERE r.driver_id = ? AND b.status = 'completed'`, userId)?.n ?? 0,
+  // CO₂ saved on the trips this user rode in, plus on each rider carried in their car (server/co2.ts).
+  const co2 = Number(
+    one<{ n: number }>(
+      `SELECT COALESCE(SUM(${BOOKING_CO2_SQL}),0) n FROM bookings b JOIN rides r ON r.id = b.ride_id WHERE b.status = 'completed' AND (b.rider_id = ? OR r.driver_id = ?)`,
+      userId,
+      userId,
+    )?.n ?? 0,
   )
-  return { ridesOffered: offered, ridesTaken: taken, rating, ratingCount, completionRate, co2SavedKg: Math.round((taken + ridersCarried) * 2.4 * 10) / 10 }
+  return { ridesOffered: offered, ridesTaken: taken, rating, ratingCount, completionRate, co2SavedKg: Math.round(co2 * 10) / 10 }
 }
 
 export function vehicleFor(userId: string): Vehicle | undefined {
@@ -68,6 +74,7 @@ export function vehicleFor(userId: string): Vehicle | undefined {
     plate: String(v.plate),
     seats: Number(v.seats),
     fuel: v.fuel as Vehicle['fuel'],
+    body: ((v.body as string) || 'hatchback') as Vehicle['body'],
   }
 }
 
@@ -104,6 +111,7 @@ export function meUser(row: Row): User {
     studentId: String(row.student_id ?? ''),
     gender: (row.gender as User['gender']) ?? 'undisclosed',
     commute: (row.commute as User['commute']) || undefined,
+    usualMode: (row.usual_mode as TravelMode) || undefined,
     upiId: (row.upi_id as string) || undefined,
     preferences: json(row.preferences, []),
     emergencyContacts: json(row.emergency_contacts, []),
@@ -160,6 +168,8 @@ export function toBooking(b: Row): Booking {
     drop: json<Place>(b.drop_place, {} as Place),
     seats: Number(b.seats),
     fare: Number(b.fare),
+    ...(b.rider_km != null || b.share_km != null ? { riderKm: Number(b.rider_km ?? b.share_km) } : {}),
+    ...(b.co2_kg != null ? { co2Kg: Number(b.co2_kg) } : b.rider_km != null || b.share_km != null ? { co2Kg: co2SavedKg(Number(b.rider_km ?? b.share_km), Number(b.seats)) } : {}),
     ...(b.fare_max != null ? { fareMax: Number(b.fare_max), fareFinal: !!Number(b.fare_final) } : {}),
     ...(b.paid_amount != null ? { paidAmount: Number(b.paid_amount) } : {}),
     ...(Number(b.settle_due) ? { settleDue: Number(b.settle_due) } : {}),

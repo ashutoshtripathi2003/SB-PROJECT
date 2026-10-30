@@ -14,7 +14,7 @@ import { useCelebrate } from '@/components/Celebrate'
 import { useToast } from '@/components/Toast'
 import { VehicleForm } from '@/components/VehicleForm'
 import { PinEntrySheet, WomenOnlyTag } from '@/components/Safety'
-import { Avatar, Badge, Button, Chip, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
+import { Avatar, Badge, Button, Chip, Field, IconButton, Notice, Plate, Rating, RideCardSkeleton, Seats, Segmented, Switch, VerifiedBadge } from '@/components/ui'
 import { CAMPUS } from '@/data/places'
 import { useIsDesktop } from '@/hooks'
 import { dayTime, duration, firstName, km as fmtKm, money, plural, relative, time } from '@/lib/format'
@@ -53,6 +53,8 @@ export function OfferRide() {
   const [detour, setDetour] = useState<'1' | '2' | '3' | '5'>('3')
   const [prefs, setPrefs] = useState<RidePreference[]>(u.preferences.filter((p) => p !== 'minimal_detour'))
   const [womenOnly, setWomenOnly] = useState(false)
+  const [tolls, setTolls] = useState('')
+  const tollsRs = Math.min(2000, Math.max(0, Math.round(Number(tolls) || 0)))
   const [note, setNote] = useState('')
   const [route, setRoute] = useState<RouteInfo | null>(null)
   const [cost, setCost] = useState<CostPreview | null>(null)
@@ -82,13 +84,13 @@ export function OfferRide() {
     const at = new Date(`${draft.date}T${draft.time}:00`)
     if (Number.isNaN(at.getTime())) return
     let alive = true
-    costPreview({ origin: draft.pickup, destination: draft.drop, departAt: at.toISOString(), seats: draft.seats })
+    costPreview({ origin: draft.pickup, destination: draft.drop, departAt: at.toISOString(), seats: draft.seats, tolls: tollsRs })
       .then((c) => alive && setCost(c))
       .catch(() => {})
     return () => {
       alive = false
     }
-  }, [draft.pickup, draft.drop, draft.date, draft.time, draft.seats, vehicleKey])
+  }, [draft.pickup, draft.drop, draft.date, draft.time, draft.seats, vehicleKey, tollsRs])
 
   const seat = cost?.mode === 'seat' ? cost.seat : null
   const seatPrice = seat ? Math.min(seat.max, Math.max(seat.min, price ?? seat.suggested)) : null
@@ -128,6 +130,7 @@ export function OfferRide() {
         note: note.trim() || undefined,
         womenOnly: u.gender === 'female' && womenOnly,
         ...(seatPrice != null ? { farePerSeat: seatPrice } : {}),
+        tolls: tollsRs,
       })
       celebrate({ kind: 'published', title: 'Ride offered successfully', body: 'VIT students heading your way can see it and request a seat now. We’ll notify you the moment someone does.' })
       nav(`/drive/${ride.id}`, { replace: true })
@@ -202,7 +205,13 @@ export function OfferRide() {
                 {seatPrice === seat.suggested ? 'Suggested price' : <>Suggested {money(seat.suggested)} · <button type="button" className="t-strong t-primary" onClick={() => setPrice(null)}>use it</button></>} · you can set {money(seat.min)}–{money(seat.max)}
               </p>
               <p className="cost-working">
-                Suggested: {Math.round(cost.distanceKm)} km × ₹{seat.perSeatKm} a seat (from today’s petrol price) = {money(seat.suggested)}. Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
+                Suggested: {Math.round(cost.distanceKm)} km × ₹{seat.perSeatKm} a seat = {money(seat.suggested)}.{' '}
+                {seat.rate?.auto && (
+                  <>
+                    (₹{seat.rate.perSeatKm} = {seat.rate.label.toLowerCase()} ₹{seat.rate.price} a {seat.rate.unit} ÷ {seat.rate.kmPerUnit} km a {seat.rate.unit}
+                    {' (typical in city traffic)'} ÷ {seat.rate.people} people.){' '}
+                  </>
+                )} Riders going only part of the way pay for their part (at least {money(30)}). With every seat taken you'd receive {money(draft.seats * seatPrice)}.
               </p>
             </div>
           </section>
@@ -212,7 +221,10 @@ export function OfferRide() {
             <h2 className="section__title" style={{ padding: 0 }}>
               Trip cost, shared equally
             </h2>
-            <span className="t-sm t-muted">You don’t set a price. Everyone in the car, you included, pays an equal share of the trip’s cost, worked out from its distance and its time in traffic.</span>
+            <span className="t-sm t-muted">
+              You don’t set a price. Riders share what this trip really costs your car — its fuel for the distance and for the time stuck in traffic, plus tolls
+              and parking — equally with you, by the km each person rides.
+            </span>
           </div>
           {cost ? (
             <div className="fare-box">
@@ -222,8 +234,13 @@ export function OfferRide() {
                   <span className="t-display tabular">{money(cost.cost.total)}</span>
                 </span>
                 <span className="stack" style={{ alignItems: 'flex-end' }}>
-                  <span className="t-sm t-muted">{cost.cost.km} km × {money(cost.cost.perKm)}</span>
-                  <span className="t-sm t-muted">+ {cost.cost.min} min × {money(cost.cost.perMin)}</span>
+                  <span className="t-sm t-muted">
+                    {cost.cost.km} km at {cost.cost.speedKmh} km/h{cost.cost.trafficMin > 0 ? ` + ${cost.cost.trafficMin} min jams` : ''}
+                  </span>
+                  <span className="t-sm t-muted">
+                    {cost.cost.units} {cost.cost.unit === 'litre' ? 'L' : cost.cost.unit} {cost.cost.label.toLowerCase()} · {money(cost.cost.fuelCost)}
+                  </span>
+                  {cost.cost.tolls > 0 && <span className="t-sm t-muted">+ tolls/parking {money(cost.cost.tolls)}</span>}
                 </span>
               </div>
               <div className="cost-shares" aria-label="What each rider pays">
@@ -236,13 +253,24 @@ export function OfferRide() {
                 ))}
               </div>
               <p className="cost-working">
-                {cost.cost.summary}. Riders book at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if the real cost is lower, their prices drop. They never go up.
-                {cost.trafficDelayMin > 0 && ` Forecast for this time: +${cost.trafficDelayMin} min traffic.`}
+                {cost.cost.summary}. The speed is from the traffic forecast for your departure time; a {cost.cost.carLabel.toLowerCase()} on{' '}
+                {cost.cost.label.toLowerCase()} uses that much at that speed, so this trip works out to {cost.cost.kmPerUnit} km/{cost.cost.unit === 'litre' ? 'L' : cost.cost.unit}. Riders book
+                at these prices, which include a 10% cushion so a worse jam on the day doesn’t cost you. When you start, RideSync checks the live traffic: if
+                the real cost is lower, their prices drop. They never go up.
+                {cost.meter && ` Alone by auto this trip is about ${money(cost.meter.auto)}, by taxi ${money(cost.meter.taxi)}.`}
               </p>
             </div>
           ) : (
             <p className="t-sm t-muted">{u.vehicle ? 'Choose your destination and time to see the trip cost.' : 'Add your car to see the trip cost.'}</p>
           )}
+          <Field
+            label="Tolls and parking on this trip (optional)"
+            inputMode="numeric"
+            placeholder="₹0"
+            value={tolls}
+            onChange={(e) => setTolls(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))}
+            hint="e.g. Atal Setu or Sea Link toll, or paid parking at the destination. Shared like the fuel."
+          />
         </section>
         )}
 

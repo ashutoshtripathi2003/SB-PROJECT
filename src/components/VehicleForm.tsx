@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import type { Vehicle } from '@/lib/types'
+import { CAR_TYPES, type CarType } from '@/lib/fuel'
 import { MAX_SEATS, formatPlate, validatePlate } from '@/lib/validation'
 import { Button, Field, Notice, Segmented, Stepper } from './ui'
 
@@ -23,6 +24,7 @@ export function VehicleForm({
     plate: initial?.plate ?? '',
     seats: initial?.seats ?? 3,
     fuel: initial?.fuel ?? 'petrol',
+    body: initial?.body ?? 'hatchback',
   })
   const [errors, setErrors] = useState<Record<string, string | null>>({})
   const [saving, setSaving] = useState(false)
@@ -88,6 +90,19 @@ export function VehicleForm({
             { value: 'ev', label: 'Electric' },
           ]}
         />
+      </div>
+      <div className="field">
+        <span className="field__label">Car type</span>
+        <Segmented<CarType>
+          label="Car type"
+          value={v.body ?? 'hatchback'}
+          onChange={(body) => setV({ ...v, body })}
+          options={(Object.keys(CAR_TYPES) as CarType[]).map((k) => ({ value: k, label: k === 'sedan' ? 'Sedan' : k === 'suv' ? 'SUV / MUV' : 'Hatchback' }))}
+        />
+        <span className="field__hint">
+          {CAR_TYPES[v.body ?? 'hatchback'].label}: {CAR_TYPES[v.body ?? 'hatchback'].examples}. With the fuel type and the live traffic, this sets the trip cost riders share — no mileage
+          figure needed.
+        </span>
       </div>
       <div className="stack gap-2" style={{ marginTop: 8 }}>
         <Button type="submit" size="lg" block loading={saving}>

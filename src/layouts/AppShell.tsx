@@ -1,3 +1,4 @@
+import { play } from '@/lib/sound'
 import { AnimatePresence, motion } from 'framer-motion'
 import { RefreshCw, WifiOff } from 'lucide-react'
 import { useEffect } from 'react'
@@ -84,7 +85,12 @@ function useNotificationToasts() {
         // The other person acted on your ride: show it as a moment, not just a toast.
         const go = n.link ? { onClick: () => nav(n.link!) } : null
         if (n.kind === 'accepted') return celebrate({ kind: 'accepted', title: 'Ride accepted!', body: `${n.title}. ${n.body}`, action: go ? { label: 'Confirm your seat', ...go } : undefined })
-        if (n.kind === 'request') return celebrate({ kind: 'sent', title: 'New ride request', body: n.title, action: go ? { label: 'View request', ...go } : undefined })
+        if (n.kind === 'request') return celebrate({ kind: 'sent', title: 'New ride request', body: n.title, sound: 'request', action: go ? { label: 'View request', ...go } : undefined })
+        // Everything else: a toast, with a sound for the ones that matter.
+        if (n.kind === 'chat') play('message')
+        else if (n.kind === 'arriving') play('arrived')
+        else if (n.kind === 'payment') play('success')
+        else if (n.kind === 'match') play('message')
         if (n.kind === 'rejected') return celebrate({ kind: 'declined', title: 'Request declined', body: `${n.title}. ${n.body}`, action: { label: 'Find another ride', onClick: () => nav('/find') } })
         if (n.kind === 'cancelled') return celebrate({ kind: 'cancelled', title: n.title, body: n.body, action: go ? { label: 'View details', ...go } : undefined })
         if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {

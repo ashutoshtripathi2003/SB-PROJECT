@@ -1508,3 +1508,7 @@ a.list-row:hover { background: var(--surface-hover); margin: 0 calc(var(--space-
 .assistant__form input:focus { border-color: var(--primary-600); box-shadow: 0 0 0 3px var(--primary-100); }
 .assistant__send { background: var(--primary-600); color: #fff; border-radius: 50%; width: 44px; height: 44px; }
 .assistant__send:disabled { opacity: .5; }
+
+/* Install the app (PWA): iPhone "Add to Home Screen" steps, or the browser's install button. */
+.install-hint { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+.install-hint__icon img { display: block; border-radius: 9px; }

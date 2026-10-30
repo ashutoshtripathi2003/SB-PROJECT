@@ -10,6 +10,7 @@ import '../util/checkout.dart';
 import '../util/format.dart';
 import '../util/legal.dart';
 import '../util/validation.dart';
+import '../util/sound.dart';
 import '../widgets/common.dart';
 import '../widgets/motion.dart';
 import '../widgets/photo_picker.dart';
@@ -579,6 +580,15 @@ class _PreferencesScreenState extends State<PreferencesScreen> {
           TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VehicleScreen())), child: const Text('Add car')),
         ],
         const SizedBox(height: 28),
+        Text('How did you usually get to college?', style: RS.heading(17)),
+        const SizedBox(height: 4),
+        const Text('Before RideSync. Your CO₂ saved counts only what sharing really replaces: a car, cab, auto or bike trip — not a train or bus.', style: TextStyle(color: RS.ink500)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final (v, l) in const [('car', 'My own car'), ('cab', 'Cab'), ('auto', 'Auto'), ('bike', 'Bike / scooter'), ('train', 'Local train'), ('bus', 'Bus'), ('walk', 'Walk / cycle')])
+            ChoiceChip(label: Text(l), selected: u.usualMode == v, onSelected: (_) => _set({'usualMode': v})),
+        ]),
+        const SizedBox(height: 28),
         Text('Ride preferences', style: RS.heading(17)),
         const SizedBox(height: 4),
         const Text('Applied by default when you search or offer. AI matching scores rides higher when they fit.', style: TextStyle(color: RS.ink500)),
@@ -651,21 +661,39 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
   }
 }
 
-class NotificationSettingsScreen extends StatelessWidget {
+class NotificationSettingsScreen extends StatefulWidget {
   const NotificationSettingsScreen({super.key});
+  @override
+  State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
+}
+
+class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
+  bool _sounds = Sounds.on;
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Notifications')),
-        body: ListView(padding: const EdgeInsets.all(20), children: const [
-          Notice('Notifications are on. You get instant alerts for requests, acceptances, arrivals and messages while RideSync is open.', tone: 'success', icon: Icons.notifications_active_outlined),
-          SizedBox(height: 16),
+        body: ListView(padding: const EdgeInsets.all(20), children: [
+          const Notice('Notifications are on. You get instant alerts for requests, acceptances, arrivals and messages while RideSync is open.', tone: 'success', icon: Icons.notifications_active_outlined),
+          const SizedBox(height: 16),
           Card(
             child: Column(children: [
-              ListTile(title: Text('Ride updates'), subtitle: Text('Requests, acceptances, arrivals, cancellations'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
-              Divider(indent: 16),
-              ListTile(title: Text('Messages'), subtitle: Text('Chat from drivers and riders'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
-              Divider(indent: 16),
-              ListTile(title: Text('Payments'), subtitle: Text('When a rider pays or a driver confirms'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const ListTile(title: Text('Ride updates'), subtitle: Text('Requests, acceptances, arrivals, cancellations'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              const ListTile(title: Text('Messages'), subtitle: Text('Chat from drivers and riders'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              const ListTile(title: Text('Payments'), subtitle: Text('When a rider pays or a driver confirms'), trailing: Text('Always on', style: TextStyle(color: RS.ink500))),
+              const Divider(indent: 16),
+              SwitchListTile(
+                title: const Text('Sounds and vibration'),
+                subtitle: const Text('A chime when your seat is confirmed, a ring for new requests, a beep when your driver arrives'),
+                value: _sounds,
+                onChanged: (on) async {
+                  setState(() => _sounds = on);
+                  await Sounds.setOn(on);
+                  if (on) Sounds.play(Sound.success);
+                },
+              ),
             ]),
           ),
         ]),
@@ -673,7 +701,7 @@ class NotificationSettingsScreen extends StatelessWidget {
 }
 
 const _faq = [
-  ('How is the fare decided?', 'It works exactly like BlaBlaCar. RideSync suggests a price per seat from the distance (about ₹1.85 per km at today’s petrol price; it follows the real petrol price automatically), and the driver can set anything from half to one and a half times that, never below ₹30. You see the price before you book and it never changes. If you ride only part of the way, you pay for your part. There is no platform fee.'),
+  ('How is the fare decided?', 'RideSync works out what the trip really costs the driver’s car: the fuel it burns at the speed traffic allows for that time (from TomTom’s traffic forecast — cars use more fuel per km in slow traffic, so no fixed mileage figure is used), plus what it burns in jams, plus any tolls or parking. That cost is split equally among everyone in the car, the driver included, by the km each person rides. You book at your share plus a 10% traffic cushion — the most you can ever pay — and it drops as more riders join, and again when the trip starts if traffic is lighter. There is no platform fee and no profit for the driver: it’s cost-sharing, usually a fraction of an auto fare.'),
   ('What does the AI match score mean?', 'It combines how much of your route the driver covers, how close they pass your pickup, timing, your preferences and the driver’s reliability. Tap “Why this match?” on any ride to see the breakdown.'),
   ('What if my driver cancels?', 'You’re notified straight away. If you paid online, the money is refunded automatically; if you paid the driver by UPI, ask them to send it back. Search again to find the next best match.'),
   ('Who can join RideSync?', 'Only VIT students who sign in with their verified @vit.edu.in college email and a valid student ID.'),

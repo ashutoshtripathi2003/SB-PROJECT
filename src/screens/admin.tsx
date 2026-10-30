@@ -212,16 +212,31 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle:
 
 /**
  * Fare rate: ₹ per km per seat (suggested price = route km × it). Automatic by default: it follows
- * today's petrol price (÷ 15 km/L ÷ 4 people); the admin can type their own instead, and switch back.
+ * each car's fuel price (÷ its km per litre / kg / kWh in city traffic ÷ 4 people); the admin can type their own instead.
  */
 function FareRates() {
   const [report, setReport] = useState<FareRatesReport | null>(null)
   const [own, setOwn] = useState('')
   const [busy, setBusy] = useState<'save' | 'auto' | 'refresh' | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  const [prices, setPrices] = useState<Record<string, string>>({})
   const show = (r: FareRatesReport) => {
     setReport(r)
     setOwn(String(r.rates.perSeatKm))
+    setPrices(Object.fromEntries((r.fuels ?? []).map((f) => [f.fuel, String(f.price)])))
+  }
+  async function savePrice(fuel: string) {
+    const f = report?.fuels.find((x) => x.fuel === fuel)
+    const value = Number(prices[fuel])
+    if (!f) return
+    if (!(value >= f.priceRange.min && value <= f.priceRange.max)) return setMsg(`${f.label} must be between ₹${f.priceRange.min} and ₹${f.priceRange.max} a ${f.unit}.`)
+    setMsg(null)
+    try {
+      show(await admin.setFareRates({ prices: { [fuel]: value } }))
+      setMsg(`Saved: ${f.label.toLowerCase()} at ₹${value} a ${f.unit}.`)
+    } catch {
+      setMsg('Couldn’t save. Try again.')
+    }
   }
   useEffect(() => {
     admin
@@ -240,10 +255,10 @@ function FareRates() {
       if (kind === 'refresh') {
         const r = await admin.refreshFuelPrice()
         show(r)
-        setMsg(r.refreshed ? `Read today’s petrol price: ₹${r.fuel.petrol} a litre.` : 'Couldn’t reach the fuel-price websites; still using the last price.')
+        setMsg(r.refreshed ? `Read today’s prices: petrol ₹${r.fuel.petrol}, diesel ₹${r.fuel.diesel} a litre.` : 'Couldn’t reach the fuel-price websites; still using the last price.')
       } else {
         show(await admin.setFareRates(kind === 'save' ? { perSeatKm: value } : { auto: true }))
-        setMsg(kind === 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow the petrol price.')
+        setMsg(kind === 'save' ? 'Saved. New rides use your rate until you switch back to automatic.' : 'Automatic again: new rides follow each car’s fuel price.')
       }
     } catch {
       setMsg('Couldn’t save. Try again.')
@@ -261,19 +276,55 @@ function FareRates() {
       {report && f ? (
         <div className="stack gap-2" style={{ marginTop: 8 }}>
           <div className="row row--between gap-2">
-            <span className="t-sm">Price per km per seat</span>
+            <span className="t-sm">Price per km per seat (typical petrol car)</span>
             <span className="row gap-2">
               <Badge>{report.auto ? 'Automatic' : 'Set by admin'}</Badge>
               <span className="t-strong tabular">₹{rate}</span>
             </span>
           </div>
           <p className="t-caption t-muted">
-            Petrol today: <b>₹{f.petrol}</b> a litre ({f.source}{f.at ? `, ${when(f.at)}` : ''}). ₹{f.petrol} ÷ {f.kmPerLitre} km/L ÷ {f.people} people = <b>₹{f.perSeatKm}</b> per km per seat. The server reads it every 6 hours.
+            Each car is priced from its own fuel: price ÷ km per unit in city traffic (the driver’s own figure if they gave one) ÷ {f.people} people. Petrol and diesel
+            are read from fuel-price websites every 6 hours ({f.source}
+            {f.at ? `, ${when(f.at)}` : ''}); CNG and electricity are set here.
           </p>
+          <div className="stack gap-1">
+            {report.fuels.map((x) => (
+              <div key={x.fuel} className="row row--between gap-2 t-sm" style={{ flexWrap: 'wrap', padding: '4px 0', borderBottom: '1px solid var(--border)' }}>
+                <span className="row gap-1">
+                  <b>{x.label}</b>
+                  {x.auto ? (
+                    <span className="t-muted">
+                      ₹{x.price}/{x.unit}
+                    </span>
+                  ) : (
+                    <span className="row gap-1 t-muted">
+                      ₹
+                      <input
+                        className="input"
+                        style={{ flex: 'none', width: 56, height: 28, minHeight: 0, padding: '0 6px', fontSize: 13, border: '1px solid var(--border)', borderRadius: 6 }}
+                        inputMode="decimal"
+                        aria-label={`${x.label} price`}
+                        value={prices[x.fuel] ?? ''}
+                        onChange={(e) => setPrices({ ...prices, [x.fuel]: e.target.value.replace(/[^0-9.]/g, '').slice(0, 6) })}
+                        onBlur={() => Number(prices[x.fuel]) !== x.price && savePrice(x.fuel)}
+                      />
+                      /{x.unit}
+                    </span>
+                  )}
+                  <span className="t-muted">
+                    ÷ {x.kmPerUnit} km/{x.unit === 'litre' ? 'L' : x.unit}
+                  </span>
+                </span>
+                <span className="tabular">
+                  <b>₹{x.perSeatKm}</b>/km a seat · {x.co2KgPerKm} kg CO₂/km
+                </span>
+              </div>
+            ))}
+          </div>
           <p className="t-caption t-muted">Example: a 25 km ride is suggested at ₹{example} a seat.</p>
           <div className="row gap-2" style={{ flexWrap: 'wrap' }}>
             <Button size="sm" variant="secondary" loading={busy === 'refresh'} onClick={() => act('refresh')}>
-              Read petrol price now
+              Read petrol & diesel prices now
             </Button>
             {!report.auto && (
               <Button size="sm" variant="secondary" loading={busy === 'auto'} onClick={() => act('auto')}>
@@ -283,7 +334,7 @@ function FareRates() {
           </div>
           <div className="stack" style={{ marginTop: 6 }}>
             <span className="t-sm">Or set your own <span className="t-muted">₹ / km per seat</span></span>
-            <span className="t-caption t-muted">Stops following the petrol price until you switch back</span>
+            <span className="t-caption t-muted">Used for every car, whatever its fuel, until you switch back</span>
           </div>
           <div className="row gap-2">
             <input className="input" style={{ width: 96, flex: 'none', textAlign: 'right' }} inputMode="decimal" value={own} onChange={(e) => setOwn(e.target.value.replace(/[^0-9.]/g, '').slice(0, 5))} aria-label="Your own rate per km per seat" />

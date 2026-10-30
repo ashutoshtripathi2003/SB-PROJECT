@@ -2,7 +2,6 @@ import request from 'supertest'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 process.env.DATABASE_PATH = ':memory:'
-process.env.FARE_MODE = 'share' // the earlier live-split design, still used by rides created that way
 process.env.DEV_LOGIN = 'true'
 process.env.ALLOWED_EMAIL_DOMAIN = 'vit.edu.in'
 process.env.OSRM_URL = 'http://127.0.0.1:9' // offline route estimate
@@ -19,21 +18,31 @@ beforeAll(async () => {
 })
 
 describe('trip cost', () => {
-  it('is km × ₹ per km plus minutes × ₹ per minute, and shows the working', () => {
-    const rates = { perKm: 7, perMin: 1 }
-    const c = fare.tripCost({ distanceKm: 18, durationMin: 55, trafficDelayMin: 20 }, rates)
-    expect(c).toMatchObject({ total: 181, km: 18, min: 55, trafficMin: 20, distanceCost: 126, timeCost: 55 })
-    expect(c.summary).toBe('18 km × ₹7 + 55 min × ₹1 = ₹181')
+  it('comes from the traffic speed, not a mileage figure, and shows the working', () => {
+    // Thane → VIT at 9 am: 26.6 km, 95 min door to door of which 30 min are jams (the traffic forecast). A sedan.
+    const c = fare.tripCost({ distanceKm: 26.6, durationMin: 95, trafficDelayMin: 30 }, { fuel: 'petrol', body: 'sedan' })
+    // Moving 26.6 km in 65 min = 25 km/h → 10.63 L/100 km = 2.83 L, + 30 min of jams × 1.25 L/h = 0.63 L → 3.45 L × ₹111.21
+    expect(c).toMatchObject({ total: 384, km: 26.6, trafficMin: 30, speedKmh: 25, per100: 10.63, units: 3.45, kmPerUnit: 7.7, body: 'sedan', tolls: 0 })
+    expect(Math.abs(c.distanceCost + c.timeCost - c.fuelCost)).toBeLessThanOrEqual(1) // each part rounded to the rupee
+    expect(c.summary).toBe('26.6 km moving at 25 km/h → 10.63 L/100 km = 2.83 L + 30 min of jams × 1.25 L/h = 0.63 L → 3.45 L of petrol × ₹111.21 = ₹384')
+    // Tolls and parking are shared too.
+    const toll = fare.tripCost({ distanceKm: 26.6, durationMin: 95, trafficDelayMin: 30 }, { fuel: 'petrol', body: 'sedan' }, 100)
+    expect(toll).toMatchObject({ total: 484, tolls: 100 })
+    expect(toll.summary.endsWith('+ ₹100 tolls/parking = ₹484')).toBe(true)
   })
 
-  it('costs more in traffic, for the same km, whatever the car', () => {
-    const rates = { ...fare.DEFAULT_RATES }
-    const clear = fare.tripCost({ distanceKm: 25, durationMin: 58 }, rates)
-    const rush = fare.tripCost({ distanceKm: 25, durationMin: 113, trafficDelayMin: 55 }, rates)
-    expect(rush.distanceCost).toBe(clear.distanceCost) // the km part is the same
-    expect(rush.total - clear.total).toBe(55 * rates.perMin) // the jam adds only its minutes
-    // The rates come from the admin's settings.
-    expect(fare.tripCost({ distanceKm: 25, durationMin: 58 }, { perKm: 8, perMin: 1 }).total).toBe(clear.total + 25)
+  it('makes the same car do fewer km per litre in traffic, and depends on the fuel and size', () => {
+    // The same sedan at 6 am on clear roads: faster, so far fewer litres — what "mileage" really means.
+    const early = fare.tripCost({ distanceKm: 26.6, durationMin: 45 }, { fuel: 'petrol', body: 'sedan' })
+    expect(early).toMatchObject({ speedKmh: 35, kmPerUnit: 11, total: 270 })
+    const clear = fare.tripCost({ distanceKm: 25, durationMin: 58 })
+    const rush = fare.tripCost({ distanceKm: 25, durationMin: 113, trafficDelayMin: 55 })
+    expect(clear).toMatchObject({ fuel: 'petrol', body: 'hatchback', total: 232 })
+    expect(rush.distanceCost).toBe(clear.distanceCost) // the moving part is the same
+    expect(rush.total - clear.total).toBe(102) // 55 min of jams × 1 L/h = 0.92 L more
+    expect(fare.tripCost({ distanceKm: 25, durationMin: 58 }, { fuel: 'cng' })).toMatchObject({ unit: 'kg', total: 119 })
+    expect(fare.tripCost({ distanceKm: 25, durationMin: 58 }, { fuel: 'ev' })).toMatchObject({ unit: 'kWh', total: 37 })
+    expect(fare.tripCost({ distanceKm: 25, durationMin: 58 }, { fuel: 'petrol', body: 'suv' }).total).toBe(372)
   })
 })
 
@@ -88,23 +97,26 @@ async function student(email: string, extra: Record<string, unknown> = {}) {
 describe('fair fares end to end', () => {
   it('previews the cost, re-splits as riders join, and settles at the start', async () => {
     const driver = await student('fare.driver@vit.edu.in', { upiId: 'driver@okaxis' })
-    // Any car works: nothing about the car is needed for the fare (older apps still send mileage; it's ignored).
-    const car = await driver.put('/api/me/vehicle').set(H).send({ make: 'Skoda', model: 'Slavia', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'petrol', mileage: { city: 12 } })
-    expect(car.status).toBe(200)
+    // The car's fuel and size set the fuel use (older apps still send a mileage figure: ignored).
+    const car = await driver.put('/api/me/vehicle').set(H).send({ make: 'Skoda', model: 'Slavia', color: 'Grey', plate: 'MH01AB4321', seats: 3, fuel: 'petrol', body: 'sedan', mileage: 8 })
+    expect(car.body.vehicle).toMatchObject({ fuel: 'petrol', body: 'sedan' })
     expect(car.body.vehicle.mileage).toBeUndefined()
 
     const departAt = new Date(Date.now() + 3 * 3600_000).toISOString()
-    const preview = await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3 })
+    const preview = await driver.post('/api/rides/cost-preview').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, tolls: 50 })
     expect(preview.status).toBe(200)
-    expect(preview.body.cost.total).toBe(Math.round(preview.body.cost.km * 7 + preview.body.cost.min * 1))
+    expect(preview.body.mode).toBe('share')
+    const pc = preview.body.cost
+    expect(pc).toMatchObject({ fuel: 'petrol', body: 'sedan', tolls: 50 })
+    expect(Math.abs(pc.total - (pc.units * 111.21 + 50))).toBeLessThan(1) // fuel × today's price + tolls
     expect(preview.body.shares).toHaveLength(3)
     expect(preview.body.shares[0].each).toBeGreaterThan(preview.body.shares[2].each)
     // The driver pays their own share: whatever the riders don't cover.
     for (const sh of preview.body.shares) expect(sh.driver).toBe(Math.max(0, preview.body.cost.total - sh.riders * sh.each))
     expect(preview.body.shares[0].driver).toBeGreaterThan(0)
 
-    const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [] })).body
-    expect(ride).toMatchObject({ fareMode: 'share' })
+    const ride = (await driver.post('/api/rides').set(H).send({ origin: campus, destination: malad, departAt, seats: 3, maxDetourKm: 3, preferences: [], tolls: 50 })).body
+    expect(ride).toMatchObject({ fareMode: 'share', costTotal: pc.total })
     const cost = ride.costTotal as number
     const query = { pickup: campus, drop: malad, date: departAt.slice(0, 10), time: '00:00', at: departAt, seats: 1, preferences: [] }
 
@@ -144,19 +156,13 @@ describe('fair fares end to end', () => {
     expect(finalA.fare).toBeLessThan(paidA)
   })
 
-  it('lets the admin set the fare rates, which new trip costs use', async () => {
+  it("lets the admin set fuel prices, which new trip costs use", async () => {
     const admin = await student('fare.admin@vit.edu.in')
     const other = await student('fare.other@vit.edu.in')
     expect((await other.get('/api/admin/fare-rates')).status).toBe(403)
-    expect((await admin.get('/api/admin/fare-rates')).body.rates).toEqual(fare.DEFAULT_RATES)
-    const put = await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 8 })
-    expect(put.body.rates).toEqual({ ...fare.DEFAULT_RATES, perKm: 8 })
-    // The BlaBlaCar-style rate per km per seat is set the same way.
-    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perSeatKm: 2.5 })).body.rates.perSeatKm).toBe(2.5)
-    expect(fare.seatPrice(20).suggested).toBe(50)
-    expect((await request(app).get('/api/config')).body.fare.rates.perKm).toBe(8)
-    expect(fare.tripCost({ distanceKm: 10, durationMin: 20 }).total).toBe(10 * 8 + 20 * fare.DEFAULT_RATES.perMin)
-    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perKm: 0 })).status).toBe(400)
-    expect((await admin.put('/api/admin/fare-rates').set(H).send({ perMin: 50 })).status).toBe(400)
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ prices: { cng: 90 } })).status).toBe(200)
+    expect(fare.tripCost({ distanceKm: 30, durationMin: 40 }, { fuel: 'cng' }).total).toBe(130) // 1.44 kg × ₹90
+    expect((await admin.put('/api/admin/fare-rates').set(H).send({ prices: { ev: 100 } })).status).toBe(400)
+    expect((await request(app).get('/api/config')).body.fare.mode).toBe('share')
   })
 })

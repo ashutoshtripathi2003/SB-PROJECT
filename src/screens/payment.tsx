@@ -1,3 +1,4 @@
+import { play } from '@/lib/sound'
 import { isShareBooking, payNowAmount } from '@/lib/fare'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Banknote, CreditCard, Copy, FlaskConical, Lock, Smartphone, Wallet as WalletIcon } from 'lucide-react'
@@ -74,6 +75,7 @@ export function Payment() {
     setError(null)
     try {
       await bookings.pay(booking.id, m, m === 'upi' ? ref.trim() || undefined : undefined)
+      play('success')
       setDone(m)
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Couldn’t confirm. Try again.')
@@ -89,6 +91,7 @@ export function Payment() {
       const r = await openCheckout(await payOnline.createOrder(booking.id))
       if (!r) return
       await payOnline.verify(booking.id, r)
+      play('success')
       setDone('online')
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t start the payment.')
@@ -113,6 +116,7 @@ export function Payment() {
         await wallet.verifyTopUp(r)
       }
       await wallet.payBooking(booking.id)
+      play('success')
       setDone('wallet')
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : 'Couldn’t pay from your wallet.')
@@ -155,37 +159,26 @@ export function Payment() {
       <TopBar title="Payment" backTo={`/trip/${booking.id}`} actions={<span className="topbar__spacer" />} />
       <div className="page__content page__content--narrow">
         <div className="stack gap-6">
-          <div className="pay-summary">
-            <span className="t-sm t-muted">
-              Ride with {driver.name} · {booking.pickup.name} → {booking.drop.name}
+          <div className="card-lite pay-head">
+            <span className="t-sm t-muted truncate">
+              {booking.pickup.name} → {booking.drop.name} · with {name}
             </span>
-            <div className="bill" style={{ marginTop: 12 }}>
-              <div className="bill__row">
-                <span>{share ? 'Your booked price' : 'Cost share'}</span>
-                <span>{money(share ? booking.fareMax! : booking.fare)}</span>
-              </div>
-              {share && booking.fare < booking.fareMax! && (
-                <div className="bill__row t-success">
-                  <span>Your price now (more riders joined)</span>
-                  <span>{money(booking.fare)}</span>
-                </div>
-              )}
-              <div className="bill__row">
-                <span>Platform fee</span>
-                <span className="t-success">Free</span>
-              </div>
-              <div className="bill__row bill__row--total">
-                <span>{share ? 'Pay now' : 'Total'}</span>
-                <span>{money(amount)}</span>
-              </div>
-              {share && (
-                <p className="t-sm t-muted" style={{ marginTop: 6 }}>
-                  {method === 'cash'
-                    ? `Your price never goes up. Pay ${name} the final price in cash at pickup; it’s fixed when the trip starts and can only be lower.`
-                    : `Your price never goes up. If it’s lower when ${name} starts the trip (more riders joined, or lighter traffic), the difference comes back to you ${method === 'upi' ? `from ${name}` : 'automatically'}.`}
-                </p>
-              )}
-            </div>
+            <span className="t-sm t-muted" style={{ marginTop: 10 }}>
+              {method === 'cash' ? 'Pay at pickup' : 'Pay now'}
+            </span>
+            <span className="price-card__amount tabular">{money(method === 'cash' ? booking.fare : amount)}</span>
+            <span className="t-sm t-success" style={{ marginTop: 4 }}>
+              No platform fee{share ? ' · your price never goes up' : ''}
+            </span>
+            {share && (
+              <p className="t-sm t-muted" style={{ marginTop: 8 }}>
+                {method === 'cash'
+                  ? `Pay ${name} the final price in cash when you get in; it’s fixed when the trip starts and can only be lower than ${money(booking.fareMax!)}.`
+                  : amount > booking.fare
+                    ? `Your share right now is ${money(booking.fare)}. You pay the most it can cost (${money(amount)}); whatever it comes down to when the trip starts, the rest comes back to you ${method === 'upi' ? `from ${name}` : 'automatically'}.`
+                    : `If it’s lower when ${name} starts the trip, the difference comes back to you ${method === 'upi' ? `from ${name}` : 'automatically'}.`}
+              </p>
+            )}
           </div>
 
           <div className="stack gap-2" role="radiogroup" aria-label="Payment method">

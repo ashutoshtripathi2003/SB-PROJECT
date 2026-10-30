@@ -56,7 +56,10 @@ class Vehicle {
   final String plate;
   final int seats;
   final String fuel;
-  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel});
+
+  /// Car size: hatchback, sedan or suv — with the fuel and the traffic speed, it sets the trip's fuel use.
+  final String body;
+  const Vehicle({required this.id, required this.make, required this.model, required this.color, required this.plate, required this.seats, required this.fuel, this.body = 'hatchback'});
   factory Vehicle.fromJson(Map<String, dynamic> j) {
     return Vehicle(
         id: _s(j['id']),
@@ -65,7 +68,8 @@ class Vehicle {
         color: _s(j['color']),
         plate: _s(j['plate']),
         seats: _i(j['seats']),
-        fuel: _s(j['fuel']));
+        fuel: _s(j['fuel']),
+        body: _ns(j['body']) ?? 'hatchback');
   }
   String get title => '$color $make $model';
 }
@@ -123,6 +127,9 @@ class User extends PublicUser {
   final String studentId;
   final String gender;
   final String? commute;
+
+  /// How they usually got to college before RideSync (car, cab, auto, bike, train, bus, walk): decides the CO₂ saved.
+  final String? usualMode;
   final String? upiId;
   final List<String> preferences;
   final List<EmergencyContact> emergencyContacts;
@@ -146,6 +153,7 @@ class User extends PublicUser {
         studentId = _s(j['studentId']),
         gender = _s(j['gender']).isEmpty ? 'undisclosed' : _s(j['gender']),
         commute = _ns(j['commute']),
+        usualMode = _ns(j['usualMode']),
         upiId = _ns(j['upiId']),
         preferences = _strings(j['preferences']),
         emergencyContacts = _maps(j['emergencyContacts']).map((c) => EmergencyContact(_s(c['name']), _s(c['phone']))).toList(),
@@ -274,6 +282,10 @@ class Booking {
   final int? paidAmount;
   final int settleDue;
 
+  /// The km this rider travels, and the CO₂ saved by sharing them (server/co2.ts).
+  final double? riderKm;
+  final double? co2Kg;
+
   Booking.fromJson(Map<String, dynamic> j)
       : id = _s(j['id']),
         rideId = _s(j['rideId']),
@@ -282,6 +294,8 @@ class Booking {
         drop = Place.fromJson((j['drop'] as Map).cast<String, dynamic>()),
         seats = _i(j['seats']),
         fare = _i(j['fare']),
+        riderKm = j['riderKm'] == null ? null : _d(j['riderKm']),
+        co2Kg = j['co2Kg'] == null ? null : _d(j['co2Kg']),
         status = _s(j['status']),
         matchScore = _d(j['matchScore']),
         createdAt = _t(j['createdAt']),
@@ -367,8 +381,25 @@ class CostPreview {
   /// Suggested price per seat (route km × [seatPerKm]) and the range the driver may choose from.
   final int seatSuggested, seatMin, seatMax;
   final double seatPerKm;
+
+  /// How [seatPerKm] was worked out: '₹111.21 a litre of petrol ÷ 6 km a litre (your car) ÷ 4 people', or null
+  /// when the admin set the rate.
+  final String? seatWorking;
   final double km, perKm, perMin;
   final String summary;
+
+  /// The fuel behind [total]: litres (kg, kWh) for the km and for the traffic, its cost, and tolls/parking.
+  final double units;
+  final String unit, fuelLabel;
+  final int fuelCost, tolls;
+
+  /// Average moving speed from the traffic forecast, and what the trip works out to in km per unit.
+  final int speedKmh;
+  final double kmPerUnit;
+  final String carLabel;
+
+  /// The same trip alone on the meter (Mumbai auto, taxi), or null from an older server.
+  final (int auto, int taxi)? meter;
 
   /// What each rider pays with 1, 2, … riders going the whole way, and the driver's own share then.
   final List<(int riders, int each, int driver)> shares;
@@ -379,6 +410,15 @@ class CostPreview {
         perKm = _d((j['cost'] as Map)['perKm']),
         perMin = _d((j['cost'] as Map)['perMin']),
         summary = _s((j['cost'] as Map)['summary']),
+        units = _d((j['cost'] as Map)['units']),
+        unit = _s((j['cost'] as Map)['unit']) == 'litre' ? 'L' : _s((j['cost'] as Map)['unit']),
+        fuelLabel = _s((j['cost'] as Map)['label']).toLowerCase(),
+        fuelCost = _i((j['cost'] as Map)['fuelCost']),
+        tolls = _i((j['cost'] as Map)['tolls']),
+        speedKmh = _i((j['cost'] as Map)['speedKmh']),
+        kmPerUnit = _d((j['cost'] as Map)['kmPerUnit']),
+        carLabel = _s((j['cost'] as Map)['carLabel']).toLowerCase(),
+        meter = j['meter'] is Map ? (_i((j['meter'] as Map)['auto']), _i((j['meter'] as Map)['taxi'])) : null,
         perPersonIfFull = _i(j['perPersonIfFull']),
         trafficDelayMin = _i(j['trafficDelayMin']),
         mode = j['mode'] == 'seat' ? 'seat' : 'share',
@@ -386,7 +426,15 @@ class CostPreview {
         seatMin = j['seat'] is Map ? _i((j['seat'] as Map)['min']) : 0,
         seatMax = j['seat'] is Map ? _i((j['seat'] as Map)['max']) : 0,
         seatPerKm = j['seat'] is Map ? _d((j['seat'] as Map)['perSeatKm']) : 0,
+        seatWorking = _working(j['seat']),
         shares = _maps(j['shares']).map((s) => (_i(s['riders']), _i(s['each']), _i(s['driver']))).toList();
+}
+
+String? _working(dynamic seat) {
+  final r = seat is Map ? seat['rate'] : null;
+  if (r is! Map || r['auto'] != true) return null;
+  String n(dynamic v) => _d(v).toStringAsFixed(2).replaceAll(RegExp(r'\.?0+$'), '');
+  return '₹${n(r['price'])} a ${r['unit']} of ${_s(r['label']).toLowerCase()} ÷ ${n(r['kmPerUnit'])} km a ${r['unit']} (typical in city traffic) ÷ ${r['people']} people';
 }
 
 class FeedItem {
@@ -508,8 +556,14 @@ class Thread {
   final PublicUser other;
   final Message? last;
   final String status;
+
+  /// Your side of the ride ('rider' or 'driver'), and messages from the other person you haven't read.
+  final String role;
+  final int unread;
   Thread.fromJson(Map<String, dynamic> j)
       : bookingId = _s(j['bookingId']),
+        role = _ns(j['role']) ?? 'rider',
+        unread = _i(j['unread']),
         ride = Ride.fromJson((j['ride'] as Map).cast<String, dynamic>()),
         other = PublicUser.fromJson((j['other'] as Map).cast<String, dynamic>()),
         last = j['last'] is Map ? Message.fromJson((j['last'] as Map).cast<String, dynamic>()) : null,

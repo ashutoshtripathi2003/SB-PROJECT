@@ -13,6 +13,9 @@ export type Place = {
   googlePlaceId?: string
 }
 
+/** How a student usually gets to college (for the CO₂ estimate, server/co2.ts). */
+export type TravelMode = 'car' | 'cab' | 'auto' | 'bike' | 'train' | 'bus' | 'walk'
+
 export type CommuteMode = 'driver' | 'rider' | 'both'
 export type Gender = 'female' | 'male' | 'other' | 'undisclosed'
 
@@ -26,6 +29,8 @@ export type Vehicle = {
   plate: string
   seats: number // passenger seats excluding driver
   fuel: 'petrol' | 'diesel' | 'cng' | 'ev'
+  /** Car size: decides how much fuel it burns at a given traffic speed (src/lib/fuel.ts). */
+  body?: 'hatchback' | 'sedan' | 'suv'
 }
 
 /** What other students can see about you. */
@@ -50,6 +55,8 @@ export type User = PublicUser & {
   studentId: string
   gender: Gender
   commute?: CommuteMode
+  /** How they usually got to college before RideSync; decides the CO₂ their shared rides save. */
+  usualMode?: TravelMode
   upiId?: string
   preferences: RidePreference[]
   emergencyContacts: { name: string; phone: string }[]
@@ -126,6 +133,10 @@ export type Booking = {
   drop: Place
   seats: number
   fare: number // total for all seats: the current share (final once the trip starts)
+  /** The km this rider travels in the car. */
+  riderKm?: number
+  /** Estimated CO₂ saved by sharing (server/co2.ts): the rider's replaced trips minus the driver's detour. */
+  co2Kg?: number
   /** Fair fares: the most this booking can cost; `fare` falls below it as more riders join. */
   fareMax?: number
   /** True once the driver started the trip and the share is fixed. */
@@ -208,6 +219,8 @@ export type MatchResult = {
   fareMax?: number
   /** Part of the driver's route this rider travels (0–1). */
   shareFraction?: number
+  /** The same trip alone on the meter (Mumbai auto and taxi, approximate), per person. */
+  meter?: { auto: number; taxi: number }
   reasons: string[]
   caveats: string[]
   history?: string
@@ -262,7 +275,17 @@ export type TripItem = Booking & { ride: Ride; driver: PublicUser }
 export type OfferedItem = Ride & { pending: number; earned: number; riders: number }
 export type Trips = { bookings: TripItem[]; rides: OfferedItem[] }
 
-export type Thread = { bookingId: string; ride: Ride; other: PublicUser; last?: Message; status: BookingStatus }
+export type Thread = {
+  bookingId: string
+  ride: Ride
+  other: PublicUser
+  last?: Message
+  status: BookingStatus
+  /** Your side of this ride: you're its rider or its driver. */
+  role?: 'rider' | 'driver'
+  /** Messages from the other person you haven't read. */
+  unread?: number
+}
 
 export type PaymentRecord = {
   bookingId: string
