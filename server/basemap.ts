@@ -1,3 +1,6 @@
+import { mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs'
+import { readFile, stat, writeFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { env } from './env'
 import { tomtomConfigured } from './traffic'
 
@@ -10,7 +13,8 @@ import { tomtomConfigured } from './traffic'
  *   2. MapTiler     (MAPTILER_KEY, when its key isn't limited to websites)
  *   3. OpenStreetMap (no key; light use only, which the cache below keeps it to)
  * A refusing service is skipped for a while (refused key 10 min, burst limit 20 s); at most 6 fetches
- * run at once so zooming doesn't trip the free plans' burst limits. Tiles are cached for a week.
+ * run at once so zooming doesn't trip the free plans' burst limits. Tiles are cached for a week, in memory
+ * and on disk (data/tiles), so a restart or deploy doesn't make every phone wait for the map again.
  */
 
 type Source = { name: string; url: (z: number, x: number, y: number, hi?: boolean) => string; attribution: string }
@@ -36,6 +40,38 @@ const available = () => SOURCES.filter((s) => configured(s) && (pausedUntil.get(
 const WEEK = 7 * 86_400_000
 const cache = new Map<string, { at: number; body: Buffer; source: string }>()
 const UA = 'RideSync/1.0 (college carpooling app)'
+
+// Tiles on disk next to the database (none for an in-memory test database). Week-old files are removed at start.
+const DISK = env.databasePath === ':memory:' ? '' : join(dirname(env.databasePath), 'tiles')
+if (DISK) {
+  try {
+    mkdirSync(DISK, { recursive: true })
+    for (const f of readdirSync(DISK)) {
+      const file = join(DISK, f)
+      if (Date.now() - statSync(file).mtimeMs > WEEK) unlinkSync(file)
+    }
+  } catch (e) {
+    console.warn('[ridesync] map tile folder unavailable:', (e as Error).message)
+  }
+}
+const diskFile = (k: string) => join(DISK, `${k.replaceAll('/', '-')}.png`)
+
+async function fromDisk(k: string): Promise<{ at: number; body: Buffer; source: string } | null> {
+  if (!DISK) return null
+  try {
+    const file = diskFile(k)
+    const { mtimeMs } = await stat(file)
+    if (Date.now() - mtimeMs > WEEK) return null
+    return { at: mtimeMs, body: await readFile(file), source: 'disk' }
+  } catch {
+    return null
+  }
+}
+
+function remember(k: string, tile: { at: number; body: Buffer; source: string }) {
+  if (cache.size >= 4000) cache.delete(cache.keys().next().value!)
+  cache.set(k, tile)
+}
 
 /** Credit line for the map that's in use right now. */
 export const basemapAttribution = () => (available()[0] ?? SOURCES[2]).attribution
@@ -86,16 +122,22 @@ function pause(name: string, status: number) {
 }
 
 async function fetchTile(z: number, x: number, y: number, hi: boolean, k: string): Promise<{ body: Buffer; source: string } | null> {
+  const saved = await fromDisk(k)
+  if (saved) {
+    remember(k, saved)
+    return saved
+  }
   await takeSlot()
   try {
     for (const s of available()) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const res = await fetch(s.url(z, x, y, hi), { signal: AbortSignal.timeout(8000), headers: { 'User-Agent': UA } })
+          // A slow service is passed over quickly so the map never waits long for one square.
+          const res = await fetch(s.url(z, x, y, hi), { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': UA } })
           if (res.ok && String(res.headers.get('content-type')).startsWith('image/')) {
             const out = { at: Date.now(), body: Buffer.from(await res.arrayBuffer()), source: s.name }
-            if (cache.size >= 4000) cache.delete(cache.keys().next().value!)
-            cache.set(k, out)
+            remember(k, out)
+            if (DISK) writeFile(diskFile(k), out.body).catch(() => {})
             return out
           }
           // One quick retry on a burst limit before moving on.
