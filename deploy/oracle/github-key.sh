@@ -15,7 +15,7 @@ as() { sudo -u ridesync "$@"; }
 
 as mkdir -p "$HOME_DIR/.ssh"
 as chmod 700 "$HOME_DIR/.ssh"
-[ -f "$KEY" ] || as ssh-keygen -t ed25519 -N '' -C 'ridesync-server (read-only)' -f "$KEY" -q
+as test -f "$KEY" || as ssh-keygen -t ed25519 -N '' -C 'ridesync-server (read-only)' -f "$KEY" -q
 
 # GitHub's published SSH host key (docs.github.com → "GitHub's SSH key fingerprints"), so the server
 # only ever talks to the real GitHub.
